@@ -1,0 +1,50 @@
+# =========================
+# Hệ điều hành & Công cụ
+# =========================
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.suo
+*.user
+*.swp
+
+# =========================
+# Frontend (Node.js / React / Vue)
+# =========================
+node_modules/
+dist/
+build/
+.npm/
+.env
+.env.local
+.env.development
+.env.test
+.env.production
+
+# =========================
+# Backend (.NET / ASP.NET Core)
+# =========================
+bin/
+obj/
+appsettings.Development.json
+appsettings.Local.json
+*.log
+
+# =========================
+# Backend (Python / FastAPI & Database)
+# =========================
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+*.db
+*.sqlite
+*.sqlite3
+
+# =========================
+# File cấu hình cá nhân
+# =========================
+secrets.json
