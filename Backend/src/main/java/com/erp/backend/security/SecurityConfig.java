@@ -1,5 +1,11 @@
 package com.erp.backend.security;
 
+import io.swagger.v3.oas.annotations.OpenAPIDefinition;
+import io.swagger.v3.oas.annotations.enums.SecuritySchemeIn;
+import io.swagger.v3.oas.annotations.enums.SecuritySchemeType;
+import io.swagger.v3.oas.annotations.info.Info;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
+import io.swagger.v3.oas.annotations.security.SecurityScheme;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -22,21 +28,21 @@ import java.util.List;
 
 @Configuration
 @EnableWebSecurity
-@EnableMethodSecurity // Phục vụ S1-05: Kích hoạt phân quyền theo @PreAuthorize trên từng hàm
+@EnableMethodSecurity
 @RequiredArgsConstructor
+// Cấu hình thông tin tài liệu Swagger và Nút Authorize gắn Token JWT
+@OpenAPIDefinition(info = @Info(title = "HỆ THỐNG ERP SALES & INVENTORY - API DOCS", version = "1.0", description = "Tài liệu API xác thực và phân quyền Sprint 1"), security = @SecurityRequirement(name = "BearerAuth"))
+@SecurityScheme(name = "BearerAuth", description = "Dán mã Access Token JWT vào đây để xác thực", scheme = "bearer", type = SecuritySchemeType.HTTP, bearerFormat = "JWT", in = SecuritySchemeIn.HEADER)
 public class SecurityConfig {
 
     private final UserDetailsServiceImpl userDetailsService;
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
 
-    // 1. Phục vụ S1-01: Bộ mã hoá mật khẩu một chiều BCrypt (chuẩn bảo mật)
     @Bean
     public PasswordEncoder passwordEncoder() {
         return new BCryptPasswordEncoder();
     }
 
-    // 2. Cầu nối xác thực người dùng và mật khẩu (Đã sửa truyền thẳng
-    // userDetailsService vào)
     @Bean
     public DaoAuthenticationProvider authenticationProvider() {
         DaoAuthenticationProvider authProvider = new DaoAuthenticationProvider(userDetailsService);
@@ -44,14 +50,11 @@ public class SecurityConfig {
         return authProvider;
     }
 
-    // 3. Quản lý xác thực trong Spring Boot
     @Bean
     public AuthenticationManager authenticationManager(AuthenticationConfiguration authConfig) throws Exception {
         return authConfig.getAuthenticationManager();
     }
 
-    // 4. Cấu hình CORS: Cho phép Frontend React (localhost:5173) gọi API không bị
-    // chặn
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
@@ -65,25 +68,25 @@ public class SecurityConfig {
         return source;
     }
 
-    // 5. Chuỗi lọc bảo mật chính: Áp dụng nguyên tắc "Deny by Default" (S1-05)
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
         http
-                // Cấu hình CORS và tắt CSRF (vì dùng Token Stateless)
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                 .csrf(csrf -> csrf.disable())
-                // Phiên làm việc không lưu trạng thái trên server (Stateless)
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-                // Quy tắc phân quyền URL:
                 .authorizeHttpRequests(auth -> auth
-                        // Cho phép truy cập tự do vào các API auth (đăng nhập)
+                        // 1. Mở cửa công khai cho API đăng nhập
                         .requestMatchers("/api/auth/**").permitAll()
-                        // Toàn bộ các API khác BẮT BUỘC phải đăng nhập (Deny by default)
+                        // 2. Mở cửa công khai cho toàn bộ giao diện Swagger UI
+                        .requestMatchers(
+                                "/v3/api-docs/**",
+                                "/swagger-ui/**",
+                                "/swagger-ui.html")
+                        .permitAll()
+                        // 3. Toàn bộ các API nghiệp vụ khác BẮT BUỘC phải có Token
                         .anyRequest().authenticated());
 
-        // Gắn nhà cung cấp xác thực
         http.authenticationProvider(authenticationProvider());
-        // Chèn bộ lọc JwtAuthenticationFilter trước bộ lọc đăng nhập mặc định
         http.addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
