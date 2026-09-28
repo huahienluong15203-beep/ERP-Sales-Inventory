@@ -57,6 +57,24 @@ public class User {
     @Builder.Default
     private Set<Role> roles = new HashSet<>();
 
+    // S1-09: Người dùng thuộc vai trò kho phải gắn với ít nhất 1 kho
+    @ManyToMany(fetch = FetchType.LAZY)
+    @JoinTable(name = "user_warehouses", joinColumns = @JoinColumn(name = "user_id"), inverseJoinColumns = @JoinColumn(name = "warehouse_id"))
+    @Builder.Default
+    private Set<Warehouse> warehouses = new HashSet<>();
+
+    // S1-09: Địa bàn phụ trách (chủ yếu cho nhân viên / quản lý kinh doanh)
+    @ManyToMany(fetch = FetchType.LAZY)
+    @JoinTable(name = "user_regions", joinColumns = @JoinColumn(name = "user_id"), inverseJoinColumns = @JoinColumn(name = "region_id"))
+    @Builder.Default
+    private Set<Region> regions = new HashSet<>();
+
+    // S1-08: Tài khoản mới tạo dùng mật khẩu tạm -> bắt buộc đổi ở lần đăng nhập đầu (S1-04 xử lý)
+    // columnDefinition có DEFAULT để ddl-auto=update thêm cột được trên bảng đã có dữ liệu
+    @Column(name = "must_change_password", nullable = false, columnDefinition = "boolean default false")
+    @Builder.Default
+    private boolean mustChangePassword = false;
+
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;
