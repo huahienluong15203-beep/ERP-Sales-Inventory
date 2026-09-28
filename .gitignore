@@ -53,4 +53,19 @@ secrets.json
 # Frontend tách thành repo riêng
 # =========================
 Frontend/
-.git_monorepo_backup/
+.git_monorepo_backup/
+
+# =========================
+# Java / Spring Boot / Maven
+# =========================
+target/
+pom.xml.tag
+pom.xml.releaseBackup
+pom.xml.versionsBackup
+pom.xml.next
+release.properties
+.mvn/wrapper/maven-wrapper.jar
+!**/src/main/**/target/
+!**/src/test/**/target/
+HELP.md
+
