@@ -48,3 +48,9 @@ env/
 # File cấu hình cá nhân
 # =========================
 secrets.json
+
+# =========================
+# Frontend tách thành repo riêng
+# =========================
+Frontend/
+.git_monorepo_backup/
