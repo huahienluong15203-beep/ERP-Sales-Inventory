@@ -224,9 +224,13 @@ public class AuthService {
         // Băm mật khẩu mới bằng BCrypt và lưu vào DB
         user.setPassword(passwordEncoder.encode(newPassword));
         user.setMustChangePassword(false);
+        // S1-04: Ghi nhận thời điểm đổi mật khẩu -> JwtAuthenticationFilter sẽ thu hồi
+        //        mọi token cũ (phiên đăng nhập khác) được cấp trước thời điểm này
+        user.setPasswordChangedAt(LocalDateTime.now());
         userRepository.save(user);
 
-        return "Đổi mật khẩu thành công! Mật khẩu mới của bạn đã có hiệu lực.";
+        return "Đổi mật khẩu thành công! Mật khẩu mới đã có hiệu lực. Các phiên đăng nhập khác đã được thu hồi.";
+
     }
 }
 
