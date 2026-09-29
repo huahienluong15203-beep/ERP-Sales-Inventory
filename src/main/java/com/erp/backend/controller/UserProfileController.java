@@ -168,7 +168,7 @@ public class UserProfileController {
     }
 
     private String getDefaultWarehouseForRole(String role) {
-        if (role == null) return "Trụ sở chính & Toàn quốc";
+        if (role == null) return "Chưa có";
         switch (role.toUpperCase()) {
             case "ROLE_WAREHOUSE": return "Kho Tổng Miền Bắc (WH-MB01)";
             case "ROLE_WH_MANAGER": return "Cụm Kho Tổng Phía Bắc (WH-MB01 & MB02)";
@@ -177,12 +177,12 @@ public class UserProfileController {
             case "ROLE_ACCOUNTANT": return "Phòng Kế toán - Trụ sở chính";
             case "ROLE_CUSTOMER": return "Điểm nhận hàng: Kho Cần Thơ";
             case "ROLE_ADMIN":
-            default: return "Trụ sở chính & Toàn quốc";
+            default: return "Chưa có";
         }
     }
 
     private String getDefaultLocationForRole(String role) {
-        if (role == null) return "Trụ sở điều hành Hà Nội";
+        if (role == null) return "Chưa có";
         switch (role.toUpperCase()) {
             case "ROLE_WAREHOUSE": return "Khu công nghiệp Tiên Sơn, Bắc Ninh";
             case "ROLE_WH_MANAGER": return "KCN Tiên Sơn & KCN Quang Minh";
@@ -191,7 +191,7 @@ public class UserProfileController {
             case "ROLE_ACCOUNTANT": return "Văn phòng Kế toán Trung tâm";
             case "ROLE_CUSTOMER": return "Chi nhánh Phân phối Minh Phát - Cần Thơ";
             case "ROLE_ADMIN":
-            default: return "Trụ sở điều hành Hà Nội";
+            default: return "Chưa có";
         }
     }
 
