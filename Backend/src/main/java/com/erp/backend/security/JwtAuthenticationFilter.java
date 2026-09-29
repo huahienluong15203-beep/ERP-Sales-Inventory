@@ -40,15 +40,17 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                 // 3. Lấy thông tin user và quyền từ Database
                 UserDetails userDetails = userDetailsService.loadUserByUsername(username);
 
-                // 4. Xác nhận đăng nhập hợp lệ cho request này
-                UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(
+                // Reloading current account state invalidates existing JWTs after an admin lock.
+                if (userDetails.isEnabled() && userDetails.isAccountNonLocked()) {
+                    UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(
                         userDetails,
                         null,
                         userDetails.getAuthorities());
-                authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
+                    authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
 
-                // Lưu vào SecurityContext để các Controller kiểm tra quyền (@PreAuthorize)
-                SecurityContextHolder.getContext().setAuthentication(authentication);
+                    // Lưu vào SecurityContext để các Controller kiểm tra quyền (@PreAuthorize)
+                    SecurityContextHolder.getContext().setAuthentication(authentication);
+                }
             }
         } catch (Exception e) {
             logger.error("Không thể xác thực người dùng: {}", e.getMessage());

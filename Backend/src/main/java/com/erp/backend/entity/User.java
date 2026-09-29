@@ -42,6 +42,9 @@ public class User {
     @Builder.Default
     private String status = "ACTIVE";
 
+    @Column(name = "lock_reason", length = 500)
+    private String lockReason;
+
     // Phục vụ S1-01: Đếm số lần đăng nhập sai (sai 5 lần liên tiếp)
     @Column(name = "failed_login_attempts", nullable = false)
     @Builder.Default
