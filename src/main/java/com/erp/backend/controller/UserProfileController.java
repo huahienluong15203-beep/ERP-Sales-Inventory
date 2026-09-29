@@ -80,6 +80,7 @@ public class UserProfileController {
             userInfo.put("status", user.getStatus());
             userInfo.put("role", effectiveRole);
             userInfo.put("roles", userRoles);
+            userInfo.put("mustChangePassword", user.isMustChangePassword());
 
             String warehouseStr = (user.getWarehouses() != null && !user.getWarehouses().isEmpty())
                     ? user.getWarehouses().stream().map(Warehouse::getName).collect(Collectors.joining(", "))

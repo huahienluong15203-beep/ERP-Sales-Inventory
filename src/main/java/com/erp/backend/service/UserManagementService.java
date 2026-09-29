@@ -233,6 +233,14 @@ public class UserManagementService {
             throw BusinessException.badRequest("WAREHOUSE_REQUIRED",
                     "Người dùng thuộc vai trò kho phải được gắn với ít nhất một kho");
         }
+        if (!hasWarehouseRole) {
+            whIds = Set.of();
+        }
+
+        boolean hasSalesRole = roles.stream().anyMatch(r -> r == RoleName.ROLE_SALES_REP || r == RoleName.ROLE_SALES_MANAGER);
+        if (!hasSalesRole) {
+            rgIds = Set.of();
+        }
 
         List<Role> roleEntities = roleRepository.findByNameIn(roles);
         if (roleEntities.size() != roles.size()) {
