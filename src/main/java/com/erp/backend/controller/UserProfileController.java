@@ -50,12 +50,25 @@ public class UserProfileController {
             }
         }
 
+        List<String> roleOrder = List.of(
+                "ROLE_ADMIN", "ROLE_SALES_MANAGER", "ROLE_WH_MANAGER",
+                "ROLE_ACCOUNTANT", "ROLE_WAREHOUSE", "ROLE_SALES_REP", "ROLE_CUSTOMER"
+        );
+
         String effectiveRole = role;
+        List<String> userRoles = List.of();
         if (user != null) {
-            List<String> userRoles = user.getRoles().stream()
+            userRoles = user.getRoles().stream()
                     .map(r -> r.getName().name())
+                    .sorted((a, b) -> {
+                        int ia = roleOrder.indexOf(a);
+                        int ib = roleOrder.indexOf(b);
+                        if (ia < 0) ia = roleOrder.size();
+                        if (ib < 0) ib = roleOrder.size();
+                        return ia - ib;
+                    })
                     .toList();
-            if (effectiveRole == null || effectiveRole.isBlank()) {
+            if (effectiveRole == null || effectiveRole.isBlank() || !userRoles.contains(effectiveRole.toUpperCase())) {
                 effectiveRole = userRoles.isEmpty() ? "ROLE_ADMIN" : userRoles.get(0);
             }
 
@@ -95,8 +108,18 @@ public class UserProfileController {
 
         response.put("user", userInfo);
 
-        // 3. Danh sách menu lọc theo quyền
-        List<Map<String, String>> menus = buildAuthorizedMenusForRole(effectiveRole);
+        // 3. Danh sách menu lọc theo quyền (kết hợp tất cả vai trò người dùng được cấp)
+        Set<String> effectiveRoles = new HashSet<>();
+        if (!userRoles.isEmpty()) {
+            effectiveRoles.addAll(userRoles);
+        }
+        if (effectiveRole != null && !effectiveRole.isBlank()) {
+            effectiveRoles.add(effectiveRole.toUpperCase());
+        }
+        if (effectiveRoles.isEmpty()) {
+            effectiveRoles.add("ROLE_ADMIN");
+        }
+        List<Map<String, String>> menus = buildAuthorizedMenus(effectiveRoles);
         response.put("menus", menus);
 
         return ResponseEntity.ok(response);
@@ -172,14 +195,12 @@ public class UserProfileController {
         }
     }
 
-    private List<Map<String, String>> buildAuthorizedMenusForRole(String role) {
+    private List<Map<String, String>> buildAuthorizedMenus(Set<String> roles) {
         List<Map<String, String>> menus = new ArrayList<>();
-        menus.add(createMenuItem("Trang chủ", "/dashboard", "LayoutDashboard", "Tổng quan hoạt động"));
+        menus.add(createMenuItem("Bàn làm việc", "/dashboard", "LayoutDashboard", "Tổng quan hoạt động"));
 
-        String upperRole = (role != null) ? role.toUpperCase() : "ROLE_ADMIN";
-
-        // Sprint 1: Chỉ Quản trị viên (ADMIN) có quyền Quản lý tài khoản (S1-08 / S1-09 / S1-10)
-        if ("ROLE_ADMIN".equals(upperRole)) {
+        // Sprint 1: Nếu người dùng có quyền Quản trị viên (ADMIN) thì hiển thị Quản lý tài khoản
+        if (roles != null && roles.contains("ROLE_ADMIN")) {
             menus.add(createMenuItem("Quản lý tài khoản", "/users", "Users", "Quản lý nhân sự & tài khoản"));
         }
 

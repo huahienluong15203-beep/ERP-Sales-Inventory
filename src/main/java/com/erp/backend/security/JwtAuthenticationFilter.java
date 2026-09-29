@@ -18,7 +18,7 @@ import org.springframework.util.StringUtils;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
-import java.time.ZoneOffset;
+import java.time.ZoneId;
 import java.util.Date;
 
 @Component
@@ -55,9 +55,10 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                     if (issuedAt != null) {
                         User dbUser = userRepository.findByUsername(username).orElse(null);
                         if (dbUser != null && dbUser.getPasswordChangedAt() != null) {
-                            long changedAtMs = dbUser.getPasswordChangedAt()
-                                    .toInstant(ZoneOffset.UTC).toEpochMilli();
-                            if (issuedAt.getTime() < changedAtMs) {
+                            long changedAtEpochSec = dbUser.getPasswordChangedAt()
+                                    .atZone(ZoneId.systemDefault()).toEpochSecond();
+                            long issuedAtEpochSec = issuedAt.getTime() / 1000;
+                            if (issuedAtEpochSec < changedAtEpochSec - 1) {
                                 // Token được cấp TRƯỚC khi đổi mật khẩu -> thu hồi
                                 logger.info("Token của '{}' bị thu hồi do đổi mật khẩu sau khi phát hành.", username);
                                 tokenIsValid = false;

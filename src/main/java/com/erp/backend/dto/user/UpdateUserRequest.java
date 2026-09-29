@@ -22,6 +22,6 @@ public class UpdateUserRequest {
     @Size(max = 100)
     private String email;
 
-    @Pattern(regexp = "^(0|\\+84)(3|5|7|8|9)\\d{8}$", message = "Số điện thoại Việt Nam không hợp lệ")
+    @Pattern(regexp = "^$|^(0|\\+84)(3|5|7|8|9)\\d{8}$", message = "Số điện thoại Việt Nam không hợp lệ")
     private String phone;
 }

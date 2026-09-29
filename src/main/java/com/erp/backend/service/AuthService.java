@@ -83,8 +83,22 @@ public class AuthService {
         userRepository.save(user);
 
         String jwtToken = jwtUtils.generateTokenFromUsername(user.getUsername());
+
+        // Sắp xếp roles theo thứ tự ưu tiên để frontend luôn chọn đúng vai trò cao nhất
+        // ROLE_ADMIN → ROLE_SALES_MANAGER → ROLE_WH_MANAGER → ROLE_ACCOUNTANT → ...
+        List<String> roleOrder = List.of(
+                "ROLE_ADMIN", "ROLE_SALES_MANAGER", "ROLE_WH_MANAGER",
+                "ROLE_ACCOUNTANT", "ROLE_WAREHOUSE", "ROLE_SALES_REP", "ROLE_CUSTOMER"
+        );
         List<String> roles = user.getRoles().stream()
                 .map(role -> role.getName().name())
+                .sorted((a, b) -> {
+                    int ia = roleOrder.indexOf(a);
+                    int ib = roleOrder.indexOf(b);
+                    if (ia < 0) ia = roleOrder.size();
+                    if (ib < 0) ib = roleOrder.size();
+                    return ia - ib;
+                })
                 .toList();
 
         return LoginResponse.builder()
