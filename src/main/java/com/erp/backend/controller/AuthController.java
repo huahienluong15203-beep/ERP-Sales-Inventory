@@ -57,7 +57,13 @@ public class AuthController {
     public ResponseEntity<?> resetPassword(@RequestBody ResetPasswordRequest request) {
         try {
             String message = authService.resetPassword(request);
-    // 3. API ĐỔI MẬT KHẨU KHI ĐANG ĐĂNG NHẬP
+            return ResponseEntity.ok(new MessageResponse(message));
+        } catch (RuntimeException e) {
+            return ResponseEntity.badRequest().body(new MessageResponse(e.getMessage()));
+        }
+    }
+
+    // 5. API ĐỔI MẬT KHẨU KHI ĐANG ĐĂNG NHẬP
     @PostMapping("/change-password")
     public ResponseEntity<?> changePassword(
             @AuthenticationPrincipal UserDetailsImpl userDetails,

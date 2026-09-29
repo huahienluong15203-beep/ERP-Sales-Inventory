@@ -2,18 +2,6 @@ package com.erp.backend.controller;
 
 import com.erp.backend.dto.LockUserRequest;
 import com.erp.backend.dto.UserAccountResponse;
-import com.erp.backend.service.UserManagementService;
-import lombok.RequiredArgsConstructor;
-import org.springframework.security.access.prepost.PreAuthorize;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PatchMapping;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
-
-import java.util.List;
-
 import com.erp.backend.dto.user.*;
 import com.erp.backend.entity.RoleName;
 import com.erp.backend.security.UserDetailsImpl;
@@ -26,8 +14,10 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
+
 /**
- * S1-08 + S1-09: API quản trị tài khoản — CHỈ Quản trị hệ thống (ADMIN) được gọi.
+ * S1-08 + S1-09 + Lock/Unlock: API quản trị tài khoản — CHỈ Quản trị hệ thống (ADMIN) được gọi.
  */
 @RestController
 @RequestMapping("/api/admin/users")
@@ -37,7 +27,8 @@ public class UserManagementController {
 
     private final UserManagementService userManagementService;
 
-    @GetMapping
+    /** Danh sách người dùng đơn giản (phục vụ chức năng khoá/mở khoá nhanh). */
+    @GetMapping("/list")
     public List<UserAccountResponse> getUsers() {
         return userManagementService.getUsers();
     }
@@ -51,7 +42,7 @@ public class UserManagementController {
     public UserAccountResponse unlockUser(@PathVariable Long userId) {
         return userManagementService.unlockUser(userId);
     }
-}
+
     /** Tìm kiếm + lọc + phân trang (mặc định 20 dòng). Vd: ?keyword=minh&role=ROLE_SALES_REP&status=ACTIVE&page=0 */
     @GetMapping
     public PageResponse<UserResponse> search(
@@ -91,6 +82,7 @@ public class UserManagementController {
     public UserResponse updateAssignments(@PathVariable Long id,
                                           @Valid @RequestBody UserAssignmentRequest request,
                                           @AuthenticationPrincipal UserDetailsImpl currentUser) {
-        return userManagementService.updateAssignments(id, request, currentUser.getId());
+        Long currentUserId = (currentUser != null) ? currentUser.getId() : null;
+        return userManagementService.updateAssignments(id, request, currentUserId);
     }
 }

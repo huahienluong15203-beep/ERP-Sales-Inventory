@@ -1,5 +1,7 @@
 package com.erp.backend.security;
 
+import com.erp.backend.entity.User;
+import com.erp.backend.repository.UserRepository;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -16,6 +18,8 @@ import org.springframework.util.StringUtils;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
+import java.time.ZoneId;
+import java.util.Date;
 
 @Component
 @RequiredArgsConstructor
@@ -25,6 +29,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     private final JwtUtils jwtUtils;
     private final UserDetailsServiceImpl userDetailsService;
+    private final UserRepository userRepository;
 
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
@@ -40,16 +45,37 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                 // 3. Lấy thông tin user và quyền từ Database
                 UserDetails userDetails = userDetailsService.loadUserByUsername(username);
 
-                // Reloading current account state invalidates existing JWTs after an admin lock.
+                // 4. Reloading current account state invalidates existing JWTs after an admin lock.
                 if (userDetails.isEnabled() && userDetails.isAccountNonLocked()) {
-                    UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(
-                        userDetails,
-                        null,
-                        userDetails.getAuthorities());
-                    authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
 
-                    // Lưu vào SecurityContext để các Controller kiểm tra quyền (@PreAuthorize)
-                    SecurityContextHolder.getContext().setAuthentication(authentication);
+                    // 5. S1-04: Thu hồi phiên cũ nếu mật khẩu đã bị đổi sau khi token được cấp.
+                    //    Token issuedAt phải SAU thời điểm đổi mật khẩu gần nhất.
+                    boolean tokenIsValid = true;
+                    Date issuedAt = jwtUtils.getIssuedAtFromToken(jwt);
+                    if (issuedAt != null) {
+                        User dbUser = userRepository.findByUsername(username).orElse(null);
+                        if (dbUser != null && dbUser.getPasswordChangedAt() != null) {
+                            long changedAtEpochSec = dbUser.getPasswordChangedAt()
+                                    .atZone(ZoneId.systemDefault()).toEpochSecond();
+                            long issuedAtEpochSec = issuedAt.getTime() / 1000;
+                            if (issuedAtEpochSec < changedAtEpochSec - 1) {
+                                // Token được cấp TRƯỚC khi đổi mật khẩu -> thu hồi
+                                logger.info("Token của '{}' bị thu hồi do đổi mật khẩu sau khi phát hành.", username);
+                                tokenIsValid = false;
+                            }
+                        }
+                    }
+
+                    if (tokenIsValid) {
+                        UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(
+                                userDetails,
+                                null,
+                                userDetails.getAuthorities());
+                        authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
+
+                        // Lưu vào SecurityContext để các Controller kiểm tra quyền (@PreAuthorize)
+                        SecurityContextHolder.getContext().setAuthentication(authentication);
+                    }
                 }
             }
         } catch (Exception e) {

@@ -42,7 +42,22 @@ public class JwtUtils {
                 .getSubject();
     }
 
-    // 3. Kiểm tra Token có hợp lệ, còn hạn sử dụng không (S1-02)
+    // 3. Trích xuất thời điểm phát hành (issuedAt) từ token
+    //    Phục vụ S1-04: so sánh với passwordChangedAt để thu hồi phiên cũ
+    public Date getIssuedAtFromToken(String token) {
+        try {
+            return Jwts.parserBuilder()
+                    .setSigningKey(key())
+                    .build()
+                    .parseClaimsJws(token)
+                    .getBody()
+                    .getIssuedAt();
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+
     public boolean validateJwtToken(String authToken) {
         try {
             Jwts.parserBuilder().setSigningKey(key()).build().parse(authToken);

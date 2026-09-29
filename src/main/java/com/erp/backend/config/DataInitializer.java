@@ -33,51 +33,47 @@ public class DataInitializer implements CommandLineRunner {
             }
         }
 
-        // 2. Tạo sẵn tài khoản ADMIN mẫu: admin / admin123
-        if (!userRepository.existsByUsername("admin")) {
-            Role adminRole = roleRepository.findByName(RoleName.ROLE_ADMIN)
-                    .orElseThrow(() -> new RuntimeException("Lỗi: Không tìm thấy Role Admin"));
+        // 2. Khởi tạo & đảm bảo mật khẩu hoạt động cho toàn bộ 7 tài khoản mẫu chuẩn Sprint 1
+        seedUser("admin", "admin123", "Quản Trị Viên Hệ Thống", "admin@erp.com", "0987654321", RoleName.ROLE_ADMIN);
+        seedUser("sales_manager", "manager123", "Trần Quản Lý Kinh Doanh", "manager@erp.com", "0912345678", RoleName.ROLE_SALES_MANAGER);
+        seedUser("sales_rep", "sales123", "Lê Văn Bán Hàng", "salesrep@erp.com", "0923456789", RoleName.ROLE_SALES_REP);
+        seedUser("wh_staff", "wh123", "Nguyễn Văn Thủ Kho", "warehouse@erp.com", "0934567890", RoleName.ROLE_WAREHOUSE);
+        seedUser("wh_manager", "wh123", "Hoàng Quản Lý Kho", "whmanager@erp.com", "0945678901", RoleName.ROLE_WH_MANAGER);
+        seedUser("accountant", "acc123", "Phạm Thị Kế Toán", "accountant@erp.com", "0956789012", RoleName.ROLE_ACCOUNTANT);
+        seedUser("customer_agent", "cust123", "Đại Lý Minh Phát (B2B)", "minhphat@daily.com", "0967890123", RoleName.ROLE_CUSTOMER);
+    }
 
-            Set<Role> roles = new HashSet<>();
-            roles.add(adminRole);
+    private void seedUser(String username, String rawPassword, String fullName, String email, String phone, RoleName roleName) {
+        Role role = roleRepository.findByName(roleName)
+                .orElseThrow(() -> new RuntimeException("Lỗi: Không tìm thấy Role " + roleName));
+        Set<Role> roles = new HashSet<>();
+        roles.add(role);
 
-            User admin = User.builder()
-                    .username("admin")
-                    .password(passwordEncoder.encode("admin123")) // Mật khẩu băm BCrypt
-                    .fullName("Quản Trị Viên Hệ Thống")
-                    .email("admin@erp.com")
-                    .phone("0987654321")
+        userRepository.findByUsername(username).ifPresentOrElse(existingUser -> {
+            // Cập nhật lại mật khẩu băm và mở khoá nếu trước đó bị lỗi / sai pass
+            existingUser.setPassword(passwordEncoder.encode(rawPassword));
+            existingUser.setStatus("ACTIVE");
+            existingUser.setFailedLoginAttempts(0);
+            existingUser.setLockUntil(null);
+            existingUser.setMustChangePassword(false);
+            existingUser.setFullName(fullName);
+            existingUser.setRoles(roles);
+            userRepository.save(existingUser);
+        }, () -> {
+            User user = User.builder()
+                    .username(username)
+                    .password(passwordEncoder.encode(rawPassword))
+                    .fullName(fullName)
+                    .email(email)
+                    .phone(phone)
                     .status("ACTIVE")
                     .failedLoginAttempts(0)
+                    .mustChangePassword(false)
                     .roles(roles)
                     .build();
 
-            userRepository.save(admin);
-            System.out.println(">>> ĐÃ KHỞI TẠO TÀI KHOẢN MẪU: admin / admin123 (ROLE_ADMIN) <<<");
-        }
-
-        // 3. Tạo sẵn tài khoản Quản lý kinh doanh mẫu: manager / manager123 (Phục vụ
-        // test xem giá vốn S1-05)
-        if (!userRepository.existsByUsername("sales_manager")) {
-            Role managerRole = roleRepository.findByName(RoleName.ROLE_SALES_MANAGER)
-                    .orElseThrow(() -> new RuntimeException("Lỗi: Không tìm thấy Role Sales Manager"));
-
-            Set<Role> roles = new HashSet<>();
-            roles.add(managerRole);
-
-            User manager = User.builder()
-                    .username("sales_manager")
-                    .password(passwordEncoder.encode("manager123"))
-                    .fullName("Quản Lý Kinh Doanh")
-                    .email("manager@erp.com")
-                    .phone("0912345678")
-                    .status("ACTIVE")
-                    .failedLoginAttempts(0)
-                    .roles(roles)
-                    .build();
-
-            userRepository.save(manager);
-            System.out.println(">>> ĐÃ KHỞI TẠO TÀI KHOẢN MẪU: sales_manager / manager123 (ROLE_SALES_MANAGER) <<<");
-        }
+            userRepository.save(user);
+            System.out.println(">>> ĐÃ KHỞI TẠO TÀI KHOẢN MẪU: " + username + " / " + rawPassword + " (" + roleName + ") <<<");
+        });
     }
 }

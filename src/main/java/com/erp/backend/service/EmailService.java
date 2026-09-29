@@ -15,6 +15,9 @@ public class EmailService {
 
     private final JavaMailSender mailSender;
 
+    @org.springframework.beans.factory.annotation.Value("${erp.app.mailFrom:${spring.mail.username:okluon123pk@gmail.com}}")
+    private String mailFrom;
+
     public void sendPasswordResetEmail(String toEmail, String resetLink) {
         // Luôn in link ra Console để tiện cho lập trình viên test ngay tại máy
         System.out.println("\n=======================================================");
@@ -27,6 +30,7 @@ public class EmailService {
             MimeMessage message = mailSender.createMimeMessage();
             MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
 
+            helper.setFrom(mailFrom, "ERP Sales & Inventory");
             helper.setTo(toEmail);
             helper.setSubject("[ERP Sales & Inventory] Yêu cầu đặt lại mật khẩu");
 
@@ -52,7 +56,7 @@ public class EmailService {
             helper.setText(htmlContent, true);
             mailSender.send(message);
             log.info("Đã gửi email đặt lại mật khẩu thành công tới: {}", toEmail);
-        } catch (MessagingException e) {
+        } catch (Exception e) {
             log.error("Lỗi khi gửi email qua SMTP: {}", e.getMessage());
             // Không ném lỗi ra ngoài để đảm bảo bảo mật và tránh crash ứng dụng khi dev
         }
