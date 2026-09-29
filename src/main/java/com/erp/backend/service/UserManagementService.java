@@ -2,17 +2,6 @@ package com.erp.backend.service;
 
 import com.erp.backend.dto.LockUserRequest;
 import com.erp.backend.dto.UserAccountResponse;
-import com.erp.backend.entity.RoleName;
-import com.erp.backend.entity.User;
-import com.erp.backend.repository.UserRepository;
-import lombok.RequiredArgsConstructor;
-import org.springframework.http.HttpStatus;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
-import org.springframework.web.server.ResponseStatusException;
-
-import java.util.List;
-
 import com.erp.backend.dto.user.*;
 import com.erp.backend.entity.*;
 import com.erp.backend.exception.BusinessException;
@@ -21,27 +10,44 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
+import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.util.*;
 
 /**
  * S1-08: Tạo, sửa, tìm kiếm tài khoản người dùng.
  * S1-09: Gán vai trò, kho, địa bàn.
+ * S1-10: Khóa / mở khóa tài khoản.
  */
 @Service
 @RequiredArgsConstructor
 public class UserManagementService {
 
+    /** Các vai trò thuộc khối kho -> bắt buộc gắn ít nhất 1 kho (S1-09). */
+    static final Set<RoleName> WAREHOUSE_ROLES = EnumSet.of(RoleName.ROLE_WAREHOUSE, RoleName.ROLE_WH_MANAGER);
+
+    static final int DEFAULT_PAGE_SIZE = 20;
+    static final int MAX_PAGE_SIZE = 100;
+
     private final UserRepository userRepository;
+    private final RoleRepository roleRepository;
+    private final WarehouseRepository warehouseRepository;
+    private final RegionRepository regionRepository;
+    private final PasswordEncoder passwordEncoder;
+    private final TempPasswordGenerator tempPasswordGenerator;
+    private final MailService mailService;
+
+    // ======================= S1-10: KHÓA / MỞ KHÓA TÀI KHOẢN =======================
 
     @Transactional(readOnly = true)
     public List<UserAccountResponse> getUsers() {
         return userRepository.findAll().stream()
-                .map(this::toResponse)
+                .map(this::toAccountResponse)
                 .toList();
     }
 
@@ -62,7 +68,7 @@ public class UserManagementService {
         user.setLockReason(reason);
         user.setFailedLoginAttempts(0);
 
-        return toResponse(userRepository.save(user));
+        return toAccountResponse(userRepository.save(user));
     }
 
     @Transactional
@@ -72,25 +78,20 @@ public class UserManagementService {
         user.setLockUntil(null);
         user.setFailedLoginAttempts(0);
 
-        return toResponse(userRepository.save(user));
+        return toAccountResponse(userRepository.save(user));
     }
 
-    private User findUser(Long userId) {
-        return userRepository.findById(userId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy tài khoản."));
-    }
-
-    private UserAccountResponse toResponse(User user) {
+    private UserAccountResponse toAccountResponse(User user) {
         List<String> roles = user.getRoles().stream()
                 .map(role -> role.getName().name())
                 .sorted()
                 .toList();
         boolean salesEmployee = user.getRoles().stream()
-            .map(role -> role.getName())
-            .anyMatch(roleName -> roleName == RoleName.ROLE_SALES_REP || roleName == RoleName.ROLE_SALES_MANAGER);
+                .map(Role::getName)
+                .anyMatch(roleName -> roleName == RoleName.ROLE_SALES_REP || roleName == RoleName.ROLE_SALES_MANAGER);
         boolean handoverRequired = salesEmployee
-            && "LOCKED".equalsIgnoreCase(user.getStatus())
-            && user.getLockUntil() == null;
+                && "LOCKED".equalsIgnoreCase(user.getStatus())
+                && user.getLockUntil() == null;
 
         return new UserAccountResponse(
                 user.getId(),
@@ -103,20 +104,6 @@ public class UserManagementService {
                 roles,
                 handoverRequired);
     }
-}
-    /** Các vai trò thuộc khối kho -> bắt buộc gắn ít nhất 1 kho (S1-09). */
-    static final Set<RoleName> WAREHOUSE_ROLES = EnumSet.of(RoleName.ROLE_WAREHOUSE, RoleName.ROLE_WH_MANAGER);
-
-    static final int DEFAULT_PAGE_SIZE = 20;
-    static final int MAX_PAGE_SIZE = 100;
-
-    private final UserRepository userRepository;
-    private final RoleRepository roleRepository;
-    private final WarehouseRepository warehouseRepository;
-    private final RegionRepository regionRepository;
-    private final PasswordEncoder passwordEncoder;
-    private final TempPasswordGenerator tempPasswordGenerator;
-    private final MailService mailService;
 
     // ======================= S1-08: TÌM KIẾM / XEM =======================
 
