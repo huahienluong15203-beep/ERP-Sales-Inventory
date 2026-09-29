@@ -16,6 +16,8 @@ public class UserResponse {
     private String email;
     private String phone;
     private String status;
+    private String lockReason;
+    private boolean handoverRequired;
     private boolean mustChangePassword;
     private List<String> roles;
     private List<RefItem> warehouses;
