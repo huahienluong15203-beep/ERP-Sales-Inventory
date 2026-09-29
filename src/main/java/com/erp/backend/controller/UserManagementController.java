@@ -82,6 +82,7 @@ public class UserManagementController {
     public UserResponse updateAssignments(@PathVariable Long id,
                                           @Valid @RequestBody UserAssignmentRequest request,
                                           @AuthenticationPrincipal UserDetailsImpl currentUser) {
-        return userManagementService.updateAssignments(id, request, currentUser.getId());
+        Long currentUserId = (currentUser != null) ? currentUser.getId() : null;
+        return userManagementService.updateAssignments(id, request, currentUserId);
     }
 }
