@@ -175,88 +175,15 @@ public class UserProfileController {
     private List<Map<String, String>> buildAuthorizedMenusForRole(String role) {
         List<Map<String, String>> menus = new ArrayList<>();
         menus.add(createMenuItem("Trang chủ", "/dashboard", "LayoutDashboard", "Tổng quan hoạt động"));
-        menus.add(createMenuItem("Hồ sơ cá nhân", "/profile", "User", "Thông tin nhân sự"));
 
         String upperRole = (role != null) ? role.toUpperCase() : "ROLE_ADMIN";
 
+        // Sprint 1: Chỉ Quản trị viên (ADMIN) có quyền Quản lý tài khoản (S1-08 / S1-09 / S1-10)
         if ("ROLE_ADMIN".equals(upperRole)) {
             menus.add(createMenuItem("Quản lý tài khoản", "/users", "Users", "Quản lý nhân sự & tài khoản"));
-            menus.add(createMenuItem("Phân quyền hệ thống", "/roles", "ShieldCheck", "Ma trận phân quyền"));
-            menus.add(createMenuItem("Danh mục sản phẩm", "/products", "Package", "Tra cứu 5.000 SKU"));
-            menus.add(createMenuItem("Bảng giá & Chiết khấu", "/price-books", "Tags", "Bảng giá"));
-            menus.add(createMenuItem("Danh sách đại lý", "/customers", "Building2", "Hồ sơ đại lý B2B"));
-            menus.add(createMenuItem("Hạn mức công nợ", "/debt-limits", "CreditCard", "Kiểm soát tín dụng"));
-            menus.add(createMenuItem("Tạo đơn đặt hàng", "/orders/create", "ShoppingCart", "Lập đơn bán hàng"));
-            menus.add(createMenuItem("Danh sách đơn hàng", "/orders", "ClipboardList", "Theo dõi đơn"));
-            menus.add(createMenuItem("Duyệt đơn ngoại lệ", "/orders/approvals", "CheckSquare", "Duyệt vượt hạn mức"));
-            menus.add(createMenuItem("Tra cứu tồn kho", "/inventory", "Boxes", "Tồn thực tế vs Khả dụng"));
-            menus.add(createMenuItem("Quản lý lô & Hạn dùng", "/batches", "CalendarClock", "Cảnh báo FEFO"));
-            menus.add(createMenuItem("Danh mục kho hàng", "/warehouses", "Warehouse", "Cụm kho & sức chứa"));
-            menus.add(createMenuItem("Lập phiếu xuất kho", "/shipping/create", "Truck", "Xuất kho FEFO"));
-            menus.add(createMenuItem("Lệnh giao hàng", "/shipping", "Send", "Vận chuyển"));
-            menus.add(createMenuItem("Hoá đơn tài chính", "/invoices", "Receipt", "Hoá đơn VAT"));
-            menus.add(createMenuItem("Thu tiền & Thanh toán", "/payments", "BadgeDollarSign", "Ghi nhận thanh toán"));
-            menus.add(createMenuItem("Sổ theo dõi công nợ", "/debts", "BookOpenCheck", "Đối soát công nợ"));
-            menus.add(createMenuItem("Yêu cầu trả hàng", "/returns", "RotateCcw", "Trả hàng & Đổi"));
-            menus.add(createMenuItem("Điều chỉnh tồn kho", "/adjustments", "SlidersHorizontal", "Cân đối kho"));
-            menus.add(createMenuItem("Báo cáo doanh thu & Lãi", "/reports/sales", "TrendingUp", "Doanh số & Lãi"));
-            menus.add(createMenuItem("Báo cáo xuất nhập tồn", "/reports/inventory", "BarChart3", "Biến động thẻ kho"));
-            menus.add(createMenuItem("Báo cáo tuổi nợ", "/reports/debts", "PieChart", "Tuổi nợ đại lý"));
-        } else if ("ROLE_SALES_MANAGER".equals(upperRole)) {
-            menus.add(createMenuItem("Danh mục sản phẩm", "/products", "Package", "Tra cứu sản phẩm"));
-            menus.add(createMenuItem("Bảng giá & Chiết khấu", "/price-books", "Tags", "Bảng giá"));
-            menus.add(createMenuItem("Danh sách đại lý", "/customers", "Building2", "Hồ sơ đại lý"));
-            menus.add(createMenuItem("Hạn mức công nợ", "/debt-limits", "CreditCard", "Kiểm soát tín dụng"));
-            menus.add(createMenuItem("Tạo đơn đặt hàng", "/orders/create", "ShoppingCart", "Lập đơn bán hàng"));
-            menus.add(createMenuItem("Danh sách đơn hàng", "/orders", "ClipboardList", "Theo dõi đơn"));
-            menus.add(createMenuItem("Duyệt đơn ngoại lệ", "/orders/approvals", "CheckSquare", "Duyệt vượt hạn mức"));
-            menus.add(createMenuItem("Tra cứu tồn kho", "/inventory", "Boxes", "Tồn thực tế vs Khả dụng"));
-            menus.add(createMenuItem("Hoá đơn tài chính", "/invoices", "Receipt", "Hoá đơn VAT"));
-            menus.add(createMenuItem("Sổ theo dõi công nợ", "/debts", "BookOpenCheck", "Đối soát công nợ"));
-            menus.add(createMenuItem("Báo cáo doanh thu & Lãi", "/reports/sales", "TrendingUp", "Doanh số & Lãi"));
-            menus.add(createMenuItem("Báo cáo tuổi nợ", "/reports/debts", "PieChart", "Tuổi nợ đại lý"));
-        } else if ("ROLE_SALES_REP".equals(upperRole)) {
-            menus.add(createMenuItem("Danh mục sản phẩm", "/products", "Package", "Tra cứu sản phẩm"));
-            menus.add(createMenuItem("Danh sách đại lý", "/customers", "Building2", "Hồ sơ đại lý"));
-            menus.add(createMenuItem("Tạo đơn đặt hàng", "/orders/create", "ShoppingCart", "Lập đơn bán hàng"));
-            menus.add(createMenuItem("Danh sách đơn hàng", "/orders", "ClipboardList", "Theo dõi đơn"));
-            menus.add(createMenuItem("Tra cứu tồn kho", "/inventory", "Boxes", "Tồn thực tế vs Khả dụng"));
-            menus.add(createMenuItem("Lệnh giao hàng", "/shipping", "Send", "Vận chuyển"));
-            menus.add(createMenuItem("Sổ theo dõi công nợ", "/debts", "BookOpenCheck", "Đối soát công nợ"));
-            menus.add(createMenuItem("Yêu cầu trả hàng", "/returns", "RotateCcw", "Trả hàng & Đổi"));
-        } else if ("ROLE_WAREHOUSE".equals(upperRole)) {
-            menus.add(createMenuItem("Danh mục sản phẩm", "/products", "Package", "Tra cứu sản phẩm"));
-            menus.add(createMenuItem("Tra cứu tồn kho", "/inventory", "Boxes", "Tồn thực tế vs Khả dụng"));
-            menus.add(createMenuItem("Quản lý lô & Hạn dùng", "/batches", "CalendarClock", "Cảnh báo FEFO"));
-            menus.add(createMenuItem("Lập phiếu xuất kho", "/shipping/create", "Truck", "Xuất kho FEFO"));
-            menus.add(createMenuItem("Lệnh giao hàng", "/shipping", "Send", "Vận chuyển"));
-        } else if ("ROLE_WH_MANAGER".equals(upperRole)) {
-            menus.add(createMenuItem("Danh mục sản phẩm", "/products", "Package", "Tra cứu sản phẩm"));
-            menus.add(createMenuItem("Tra cứu tồn kho", "/inventory", "Boxes", "Tồn thực tế vs Khả dụng"));
-            menus.add(createMenuItem("Quản lý lô & Hạn dùng", "/batches", "CalendarClock", "Cảnh báo FEFO"));
-            menus.add(createMenuItem("Danh mục kho hàng", "/warehouses", "Warehouse", "Cụm kho & sức chứa"));
-            menus.add(createMenuItem("Lập phiếu xuất kho", "/shipping/create", "Truck", "Xuất kho FEFO"));
-            menus.add(createMenuItem("Lệnh giao hàng", "/shipping", "Send", "Vận chuyển"));
-            menus.add(createMenuItem("Yêu cầu trả hàng", "/returns", "RotateCcw", "Trả hàng & Đổi"));
-            menus.add(createMenuItem("Điều chỉnh tồn kho", "/adjustments", "SlidersHorizontal", "Cân đối kho"));
-            menus.add(createMenuItem("Báo cáo xuất nhập tồn", "/reports/inventory", "BarChart3", "Biến động thẻ kho"));
-        } else if ("ROLE_ACCOUNTANT".equals(upperRole)) {
-            menus.add(createMenuItem("Bảng giá & Chiết khấu", "/price-books", "Tags", "Bảng giá"));
-            menus.add(createMenuItem("Danh sách đại lý", "/customers", "Building2", "Hồ sơ đại lý"));
-            menus.add(createMenuItem("Hạn mức công nợ", "/debt-limits", "CreditCard", "Kiểm soát tín dụng"));
-            menus.add(createMenuItem("Danh sách đơn hàng", "/orders", "ClipboardList", "Theo dõi đơn"));
-            menus.add(createMenuItem("Hoá đơn tài chính", "/invoices", "Receipt", "Hoá đơn VAT"));
-            menus.add(createMenuItem("Thu tiền & Thanh toán", "/payments", "BadgeDollarSign", "Ghi nhận thanh toán"));
-            menus.add(createMenuItem("Sổ theo dõi công nợ", "/debts", "BookOpenCheck", "Đối soát công nợ"));
-            menus.add(createMenuItem("Báo cáo xuất nhập tồn", "/reports/inventory", "BarChart3", "Biến động thẻ kho"));
-            menus.add(createMenuItem("Báo cáo tuổi nợ", "/reports/debts", "PieChart", "Tuổi nợ đại lý"));
-        } else if ("ROLE_CUSTOMER".equals(upperRole)) {
-            menus.add(createMenuItem("Danh mục sản phẩm", "/products", "Package", "Tra cứu sản phẩm"));
-            menus.add(createMenuItem("Tạo đơn đặt hàng", "/orders/create", "ShoppingCart", "Lập đơn bán hàng"));
-            menus.add(createMenuItem("Danh sách đơn hàng", "/orders", "ClipboardList", "Theo dõi đơn"));
-            menus.add(createMenuItem("Sổ theo dõi công nợ", "/debts", "BookOpenCheck", "Đối soát công nợ"));
         }
 
+        menus.add(createMenuItem("Hồ sơ cá nhân", "/profile", "User", "Thông tin nhân sự"));
         return menus;
     }
 
