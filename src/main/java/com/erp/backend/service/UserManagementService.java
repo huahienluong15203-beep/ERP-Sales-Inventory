@@ -251,12 +251,39 @@ public class UserManagementService {
             throw BusinessException.badRequest("REGION_INVALID", "Có địa bàn không tồn tại hoặc đã ngừng hoạt động");
         }
 
-        user.setRoles(new HashSet<>(roleEntities));
-        user.setWarehouses(new HashSet<>(warehouses));
-        user.setRegions(new HashSet<>(regions));
+        if (user.getRoles() == null) {
+            user.setRoles(new HashSet<>(roleEntities));
+        } else {
+            user.getRoles().clear();
+            user.getRoles().addAll(roleEntities);
+        }
+
+        if (user.getWarehouses() == null) {
+            user.setWarehouses(new HashSet<>(warehouses));
+        } else {
+            user.getWarehouses().clear();
+            user.getWarehouses().addAll(warehouses);
+        }
+
+        if (user.getRegions() == null) {
+            user.setRegions(new HashSet<>(regions));
+        } else {
+            user.getRegions().clear();
+            user.getRegions().addAll(regions);
+        }
     }
 
     // ======================= HÀM PHỤ =======================
+
+    private static final List<RoleName> ROLE_PRIORITY_ORDER = List.of(
+            RoleName.ROLE_ADMIN,
+            RoleName.ROLE_SALES_MANAGER,
+            RoleName.ROLE_WH_MANAGER,
+            RoleName.ROLE_ACCOUNTANT,
+            RoleName.ROLE_WAREHOUSE,
+            RoleName.ROLE_SALES_REP,
+            RoleName.ROLE_CUSTOMER
+    );
 
     private User findUser(Long id) {
         return userRepository.findById(id)
@@ -275,6 +302,15 @@ public class UserManagementService {
                 && "LOCKED".equalsIgnoreCase(u.getStatus())
                 && u.getLockUntil() == null;
 
+        List<String> sortedRoles = u.getRoles().stream()
+                .map(Role::getName)
+                .sorted(Comparator.comparingInt(r -> {
+                    int idx = ROLE_PRIORITY_ORDER.indexOf(r);
+                    return idx == -1 ? 99 : idx;
+                }))
+                .map(Enum::name)
+                .toList();
+
         return UserResponse.builder()
                 .id(u.getId())
                 .username(u.getUsername())
@@ -285,7 +321,7 @@ public class UserManagementService {
                 .lockReason(u.getLockReason())
                 .handoverRequired(handoverRequired)
                 .mustChangePassword(u.isMustChangePassword())
-                .roles(u.getRoles().stream().map(r -> r.getName().name()).sorted().toList())
+                .roles(sortedRoles)
                 .warehouses(u.getWarehouses().stream()
                         .map(w -> new RefItem(w.getId(), w.getCode(), w.getName()))
                         .sorted(Comparator.comparing(RefItem::code)).toList())
