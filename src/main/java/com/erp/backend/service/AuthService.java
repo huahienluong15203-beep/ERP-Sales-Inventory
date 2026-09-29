@@ -95,6 +95,7 @@ public class AuthService {
                 .fullName(user.getFullName())
                 .email(user.getEmail())
                 .roles(roles)
+                .mustChangePassword(user.isMustChangePassword())
                 .build();
     }
 
@@ -222,6 +223,7 @@ public class AuthService {
 
         // Băm mật khẩu mới bằng BCrypt và lưu vào DB
         user.setPassword(passwordEncoder.encode(newPassword));
+        user.setMustChangePassword(false);
         userRepository.save(user);
 
         return "Đổi mật khẩu thành công! Mật khẩu mới của bạn đã có hiệu lực.";

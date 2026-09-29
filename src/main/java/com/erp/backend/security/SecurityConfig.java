@@ -77,13 +77,15 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         // 1. Mở cửa công khai cho API đăng nhập
                         .requestMatchers("/api/auth/**").permitAll()
-                        // 2. Mở cửa công khai cho toàn bộ giao diện Swagger UI
+                        // 2. Mở cửa cho navigation context (tự trích xuất UserDetails nếu có token)
+                        .requestMatchers("/api/v1/navigation/**").permitAll()
+                        // 3. Mở cửa công khai cho toàn bộ giao diện Swagger UI
                         .requestMatchers(
                                 "/v3/api-docs/**",
                                 "/swagger-ui/**",
                                 "/swagger-ui.html")
                         .permitAll()
-                        // 3. Toàn bộ các API nghiệp vụ khác BẮT BUỘC phải có Token
+                        // 4. Toàn bộ các API nghiệp vụ khác BẮT BUỘC phải có Token
                         .anyRequest().authenticated());
 
         http.authenticationProvider(authenticationProvider());
