@@ -8,6 +8,10 @@ import lombok.RequiredArgsConstructor;
 import com.erp.backend.dto.ForgotPasswordRequest;
 import com.erp.backend.dto.ResetPasswordRequest;
 
+import com.erp.backend.dto.ChangePasswordRequest;
+import com.erp.backend.security.UserDetailsImpl;
+import org.springframework.http.HttpStatus;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -53,6 +57,18 @@ public class AuthController {
     public ResponseEntity<?> resetPassword(@RequestBody ResetPasswordRequest request) {
         try {
             String message = authService.resetPassword(request);
+    // 3. API ĐỔI MẬT KHẨU KHI ĐANG ĐĂNG NHẬP
+    @PostMapping("/change-password")
+    public ResponseEntity<?> changePassword(
+            @AuthenticationPrincipal UserDetailsImpl userDetails,
+            @RequestBody ChangePasswordRequest request) {
+        if (userDetails == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(new MessageResponse("Vui lòng đăng nhập để thực hiện đổi mật khẩu!"));
+        }
+
+        try {
+            String message = authService.changePassword(userDetails.getId(), request);
             return ResponseEntity.ok(new MessageResponse(message));
         } catch (RuntimeException e) {
             return ResponseEntity.badRequest().body(new MessageResponse(e.getMessage()));
