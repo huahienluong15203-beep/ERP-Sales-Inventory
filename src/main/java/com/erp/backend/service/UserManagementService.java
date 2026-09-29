@@ -268,6 +268,13 @@ public class UserManagementService {
     }
 
     UserResponse toResponse(User u) {
+        boolean salesEmployee = u.getRoles().stream()
+                .map(Role::getName)
+                .anyMatch(roleName -> roleName == RoleName.ROLE_SALES_REP || roleName == RoleName.ROLE_SALES_MANAGER);
+        boolean handoverRequired = salesEmployee
+                && "LOCKED".equalsIgnoreCase(u.getStatus())
+                && u.getLockUntil() == null;
+
         return UserResponse.builder()
                 .id(u.getId())
                 .username(u.getUsername())
@@ -275,6 +282,8 @@ public class UserManagementService {
                 .email(u.getEmail())
                 .phone(u.getPhone())
                 .status(u.getStatus())
+                .lockReason(u.getLockReason())
+                .handoverRequired(handoverRequired)
                 .mustChangePassword(u.isMustChangePassword())
                 .roles(u.getRoles().stream().map(r -> r.getName().name()).sorted().toList())
                 .warehouses(u.getWarehouses().stream()
