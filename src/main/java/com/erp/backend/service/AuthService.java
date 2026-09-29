@@ -1,64 +1,71 @@
 package com.erp.backend.service;
 
+import com.erp.backend.dto.ForgotPasswordRequest;
 import com.erp.backend.dto.LoginRequest;
 import com.erp.backend.dto.LoginResponse;
+import com.erp.backend.dto.ResetPasswordRequest;
+import com.erp.backend.entity.PasswordResetToken;
 import com.erp.backend.entity.User;
+import com.erp.backend.repository.PasswordResetTokenRepository;
 import com.erp.backend.repository.UserRepository;
 import com.erp.backend.security.JwtUtils;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
 public class AuthService {
 
     private final UserRepository userRepository;
+    private final PasswordResetTokenRepository tokenRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtUtils jwtUtils;
+    private final EmailService emailService;
+
+    @Value("${erp.app.resetPasswordExpirationMs:1800000}")
+    private long resetTokenExpirationMs;
+
+    @Value("${erp.app.resetPasswordUrl:http://localhost:5173/reset-password}")
+    private String resetPasswordUrl;
 
     private static final int MAX_FAILED_ATTEMPTS = 5;
     private static final int LOCK_TIME_DURATION_MINUTES = 15;
 
+    // ... (Giữ nguyên hàm authenticateUser cũ) ...
     @Transactional(noRollbackFor = RuntimeException.class)
     public LoginResponse authenticateUser(LoginRequest loginRequest) {
-        // 1. Tìm user trong DB theo username
+        // [Toàn bộ logic hàm authenticateUser cũ giữ nguyên 100%]
         User user = userRepository.findByUsername(loginRequest.getUsername())
                 .orElseThrow(() -> new RuntimeException("Tài khoản hoặc mật khẩu không chính xác!"));
 
-        // 2. Kiểm tra xem tài khoản có đang bị khoá tạm 15 phút không (S1-01)
         if ("LOCKED".equalsIgnoreCase(user.getStatus())) {
             if (user.getLockUntil() != null) {
-                // Nếu vẫn chưa hết 15 phút
                 if (user.getLockUntil().isAfter(LocalDateTime.now())) {
                     throw new RuntimeException(
                             "Tài khoản đang bị tạm khoá do nhập sai quá 5 lần. Vui lòng thử lại sau!");
                 } else {
-                    // Đã qua 15 phút -> Tự động mở khoá lại
                     user.setStatus("ACTIVE");
                     user.setFailedLoginAttempts(0);
                     user.setLockUntil(null);
                     userRepository.save(user);
                 }
             } else {
-                // Bị Admin khoá vĩnh viễn (S1-10)
                 throw new RuntimeException("Tài khoản đã bị khoá bởi Quản trị viên!");
             }
         }
 
-        // 3. So khớp mật khẩu nhập vào với mật khẩu đã băm BCrypt trong DB
         boolean isPasswordMatch = passwordEncoder.matches(loginRequest.getPassword(), user.getPassword());
-
         if (!isPasswordMatch) {
-            // Mật khẩu sai: Tăng số lần đăng nhập sai
             int attempts = user.getFailedLoginAttempts() + 1;
             user.setFailedLoginAttempts(attempts);
-
-            // TIÊU CHÍ S1-01: Nếu nhập sai đủ 5 lần liên tiếp -> Khoá tạm 15 phút
             if (attempts >= MAX_FAILED_ATTEMPTS) {
                 user.setStatus("LOCKED");
                 user.setLockUntil(LocalDateTime.now().plusMinutes(LOCK_TIME_DURATION_MINUTES));
@@ -71,20 +78,15 @@ public class AuthService {
             }
         }
 
-        // 4. Mật khẩu ĐÚNG: Reset số lần sai và thời điểm khoá về mặc định
         user.setFailedLoginAttempts(0);
         user.setLockUntil(null);
         userRepository.save(user);
 
-        // 5. Sinh chuỗi Token JWT (S1-02)
         String jwtToken = jwtUtils.generateTokenFromUsername(user.getUsername());
-
-        // 6. Lấy danh sách Role dạng String
         List<String> roles = user.getRoles().stream()
                 .map(role -> role.getName().name())
                 .toList();
 
-        // 7. Trả về thông tin đăng nhập thành công cho Frontend
         return LoginResponse.builder()
                 .accessToken(jwtToken)
                 .tokenType("Bearer")
@@ -94,5 +96,87 @@ public class AuthService {
                 .email(user.getEmail())
                 .roles(roles)
                 .build();
+    }
+
+    // 8. TÍNH NĂNG QUÊN MẬT KHẨU (Gửi mail kèm link 30 phút)
+    @Transactional
+    public String forgotPassword(ForgotPasswordRequest request) {
+        if (request.getEmail() == null || request.getEmail().isBlank()) {
+            throw new RuntimeException("Vui lòng cung cấp địa chỉ email!");
+        }
+
+        Optional<User> userOpt = userRepository.findByEmail(request.getEmail().trim());
+        if (userOpt.isPresent()) {
+            User user = userOpt.get();
+
+            // Xoá các token cũ chưa sử dụng của user này (nếu có)
+            tokenRepository.deleteByUser(user);
+
+            // Sinh token ngẫu nhiên UUID
+            String token = UUID.randomUUID().toString();
+            LocalDateTime expiryDate = LocalDateTime.now().plusSeconds(resetTokenExpirationMs / 1000);
+
+            PasswordResetToken resetToken = PasswordResetToken.builder()
+                    .token(token)
+                    .user(user)
+                    .expiryDate(expiryDate)
+                    .used(false)
+                    .build();
+
+            tokenRepository.save(resetToken);
+
+            // Gửi email link
+            String resetLink = resetPasswordUrl + "?token=" + token;
+            emailService.sendPasswordResetEmail(user.getEmail(), resetLink);
+        }
+
+        // TIÊU CHÍ BẢO MẬT: Dù email có tồn tại hay không thì vẫn trả về cùng 1 thông
+        // báo
+        return "Nếu email của bạn tồn tại trong hệ thống, chúng tôi đã gửi liên kết đặt lại mật khẩu. Vui lòng kiểm tra hộp thư (liên kết có hiệu lực trong 30 phút)!";
+    }
+
+    // 9. TÍNH NĂNG ĐẶT LẠI MẬT KHẨU MỚI (Từ link trong email)
+    @Transactional
+    public String resetPassword(ResetPasswordRequest request) {
+        if (request.getToken() == null || request.getToken().isBlank()) {
+            throw new RuntimeException("Mã token xác thực không hợp lệ!");
+        }
+
+        // Tiêu chí: Mật khẩu mới tối thiểu 8 ký tự, có cả chữ và số
+        String newPassword = request.getNewPassword();
+        if (newPassword == null || newPassword.length() < 8 || !newPassword.matches(".*[a-zA-Z].*")
+                || !newPassword.matches(".*[0-9].*")) {
+            throw new RuntimeException("Mật khẩu mới phải có tối thiểu 8 ký tự, bao gồm cả chữ cái và số!");
+        }
+
+        // Tìm token trong DB
+        PasswordResetToken resetToken = tokenRepository.findByToken(request.getToken())
+                .orElseThrow(() -> new RuntimeException("Liên kết đặt lại mật khẩu không hợp lệ hoặc không tồn tại!"));
+
+        // Tiêu chí: Link chỉ dùng được một lần
+        if (resetToken.isUsed()) {
+            throw new RuntimeException("Liên kết đặt lại mật khẩu này đã được sử dụng rồi!");
+        }
+
+        // Tiêu chí: Link hiệu lực trong 30 phút
+        if (resetToken.isExpired()) {
+            throw new RuntimeException("Liên kết đặt lại mật khẩu đã hết hạn (quá 30 phút). Vui lòng yêu cầu lại!");
+        }
+
+        // Đổi mật khẩu thành công: Hash BCrypt và reset trạng thái khoá
+        User user = resetToken.getUser();
+        user.setPassword(passwordEncoder.encode(newPassword));
+        user.setFailedLoginAttempts(0);
+        user.setLockUntil(null);
+        if ("LOCKED".equalsIgnoreCase(user.getStatus())) {
+            user.setStatus("ACTIVE");
+        }
+        userRepository.save(user);
+
+        // Đánh dấu token đã sử dụng
+        resetToken.setUsed(true);
+        tokenRepository.save(resetToken);
+
+        return "Đặt lại mật khẩu thành công! Bây giờ bạn đã có thể đăng nhập bằng mật khẩu mới.";
     }
 }
