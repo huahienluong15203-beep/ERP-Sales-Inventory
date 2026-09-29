@@ -95,4 +95,52 @@ public class AuthService {
                 .roles(roles)
                 .build();
     }
+
+    // 8. TÍNH NĂNG ĐỔI MẬT KHẨU KHI ĐANG ĐĂNG NHẬP
+    @Transactional
+    public String changePassword(Long userId, com.erp.backend.dto.ChangePasswordRequest request) {
+        if (userId == null) {
+            throw new RuntimeException("Không tìm thấy thông tin phiên đăng nhập của người dùng!");
+        }
+
+        if (request.getCurrentPassword() == null || request.getCurrentPassword().isBlank()) {
+            throw new RuntimeException("Vui lòng nhập mật khẩu hiện tại!");
+        }
+
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new RuntimeException("Không tìm thấy tài khoản người dùng!"));
+
+        // Tiêu chí: Mật khẩu hiện tại phải chính xác
+        boolean isPasswordMatch = passwordEncoder.matches(request.getCurrentPassword(), user.getPassword());
+        if (!isPasswordMatch) {
+            throw new RuntimeException("Mật khẩu hiện tại không chính xác!");
+        }
+
+        // Tiêu chí: Mật khẩu mới tối thiểu 8 ký tự, có cả chữ cái và số
+        String newPassword = request.getNewPassword();
+        if (newPassword == null || newPassword.length() < 8
+                || !newPassword.matches(".*[a-zA-Z].*")
+                || !newPassword.matches(".*[0-9].*")) {
+            throw new RuntimeException("Mật khẩu mới phải có tối thiểu 8 ký tự, bao gồm cả chữ cái và số!");
+        }
+
+        // Tiêu chí: Mật khẩu mới không được trùng mật khẩu cũ
+        if (passwordEncoder.matches(newPassword, user.getPassword())) {
+            throw new RuntimeException("Mật khẩu mới không được trùng với mật khẩu hiện tại!");
+        }
+
+        // Kiểm tra xác nhận mật khẩu (nếu có nhập)
+        if (request.getConfirmPassword() != null && !request.getConfirmPassword().isBlank()) {
+            if (!newPassword.equals(request.getConfirmPassword())) {
+                throw new RuntimeException("Xác nhận mật khẩu mới không trùng khớp!");
+            }
+        }
+
+        // Băm mật khẩu mới bằng BCrypt và lưu vào DB
+        user.setPassword(passwordEncoder.encode(newPassword));
+        userRepository.save(user);
+
+        return "Đổi mật khẩu thành công! Mật khẩu mới của bạn đã có hiệu lực.";
+    }
 }
+
