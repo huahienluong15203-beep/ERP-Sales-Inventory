@@ -151,7 +151,7 @@ public class UserProfileController {
     }
 
     private String getSampleEmailByRole(String role) {
-        if (role == null) return "admin@erp.com";
+        if (role == null) return "okluon123pk@gmail.com";
         switch (role.toUpperCase()) {
             case "ROLE_SALES_MANAGER": return "manager@erp.com";
             case "ROLE_SALES_REP": return "salesrep@erp.com";
@@ -160,7 +160,7 @@ public class UserProfileController {
             case "ROLE_ACCOUNTANT": return "accountant@erp.com";
             case "ROLE_CUSTOMER": return "minhphat@daily.com";
             case "ROLE_ADMIN":
-            default: return "admin@erp.com";
+            default: return "okluon123pk@gmail.com";
         }
     }
 
