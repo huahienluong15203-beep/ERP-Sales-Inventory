@@ -9,6 +9,9 @@ import com.erp.backend.dto.ForgotPasswordRequest;
 import com.erp.backend.dto.ResetPasswordRequest;
 
 import com.erp.backend.dto.ChangePasswordRequest;
+import com.erp.backend.exception.TooManyRequestsException;
+import java.util.Map;
+import jakarta.servlet.http.HttpServletRequest;
 import com.erp.backend.security.UserDetailsImpl;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -45,10 +48,16 @@ public class AuthController {
 
     // 3. API QUÊN MẬT KHẨU (Gửi mail đặt lại mật khẩu)
     @PostMapping("/forgot-password")
-    public ResponseEntity<?> forgotPassword(@RequestBody ForgotPasswordRequest request) {
+    public ResponseEntity<?> forgotPassword(@RequestBody ForgotPasswordRequest request,
+                                            HttpServletRequest httpRequest) {
         try {
-            String message = authService.forgotPassword(request);
+            String message = authService.forgotPassword(request, httpRequest.getRemoteAddr());
             return ResponseEntity.ok(new MessageResponse(message));
+        } catch (TooManyRequestsException e) {
+            // 429: gửi quá nhanh -> báo số giây phải đợi để Frontend đếm ngược
+            return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+                    .header("Retry-After", String.valueOf(e.getRetryAfterSeconds()))
+                    .body(Map.of("message", e.getMessage(), "retryAfterSeconds", e.getRetryAfterSeconds()));
         } catch (RuntimeException e) {
             return ResponseEntity.badRequest().body(new MessageResponse(e.getMessage()));
         }

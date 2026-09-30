@@ -171,9 +171,15 @@ public class UserManagementService {
         applyAssignments(user, req.getRoles(), req.getWarehouseIds(), req.getRegionIds(), null);
 
         User saved = userRepository.save(user);
-        boolean emailSent = mailService.sendAccountCreatedEmail(saved, tempPassword);
 
-        return new CreateUserResponse(toResponse(saved), emailSent);
+        // Gửi email CHẠY NGẦM và chỉ gửi SAU KHI đã lưu DB thành công -> API trả kết quả ngay.
+        boolean emailQueued = mailService.isConfigured();
+        String toEmail = saved.getEmail();
+        String fullName = saved.getFullName();
+        String savedUsername = saved.getUsername();
+        AfterCommit.run(() -> mailService.sendAccountCreatedEmail(toEmail, fullName, savedUsername, tempPassword));
+
+        return new CreateUserResponse(toResponse(saved), emailQueued);
     }
 
     // ======================= S1-08: SỬA TÀI KHOẢN =======================

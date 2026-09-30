@@ -6,6 +6,7 @@ import com.erp.backend.dto.LoginResponse;
 import com.erp.backend.dto.ResetPasswordRequest;
 import com.erp.backend.entity.PasswordResetToken;
 import com.erp.backend.entity.User;
+import com.erp.backend.exception.TooManyRequestsException;
 import com.erp.backend.repository.PasswordResetTokenRepository;
 import com.erp.backend.repository.UserRepository;
 import com.erp.backend.security.JwtUtils;
@@ -19,6 +20,7 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.regex.Pattern;
 
 @Service
 @RequiredArgsConstructor
@@ -29,6 +31,12 @@ public class AuthService {
     private final PasswordEncoder passwordEncoder;
     private final JwtUtils jwtUtils;
     private final EmailService emailService;
+    private final ForgotPasswordRateLimiter forgotPasswordRateLimiter;
+    private final ForgotPasswordFailureLimiter forgotPasswordFailureLimiter;
+
+    /** Định dạng email hợp lệ: ten@tenmien.duoi (vd: nguyenvana@gmail.com). */
+    private static final Pattern EMAIL_PATTERN =
+            Pattern.compile("^[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(\\.[A-Za-z0-9-]+)*\\.[A-Za-z]{2,}$");
 
     @Value("${erp.app.resetPasswordExpirationMs:1800000}")
     private long resetTokenExpirationMs;
@@ -129,40 +137,97 @@ public class AuthService {
     }
 
     // 8. TÍNH NĂNG QUÊN MẬT KHẨU (Gửi mail kèm link 30 phút)
+    //    Thứ tự kiểm tra:
+    //    (1) Email bắt buộc nhập  (2) Đúng định dạng
+    //    (3) Chống dò email: nhập email chưa đăng ký sai 5 lần -> khoá 5 phút (theo từng máy)
+    //    (4) Có tồn tại trong hệ thống
+    //    (5) Chống spam: cách nhau >= 60 giây, tối đa 5 lần/giờ  (6) Gửi mail CHẠY NGẦM
     @Transactional
     public String forgotPassword(ForgotPasswordRequest request) {
-        if (request.getEmail() == null || request.getEmail().isBlank()) {
-            throw new RuntimeException("Vui lòng cung cấp địa chỉ email!");
+        return forgotPassword(request, null);
+    }
+
+    /**
+     * @param clientKey định danh máy gửi yêu cầu (địa chỉ IP) - dùng để khoá khi nhập sai quá nhiều.
+     */
+    @Transactional
+    public String forgotPassword(ForgotPasswordRequest request, String clientKey) {
+        String email = request.getEmail() == null ? "" : request.getEmail().trim();
+
+        // (1) Bắt buộc nhập
+        if (email.isEmpty()) {
+            throw new RuntimeException("Vui lòng nhập địa chỉ email!");
         }
 
-        Optional<User> userOpt = userRepository.findByEmail(request.getEmail().trim());
-        if (userOpt.isPresent()) {
-            User user = userOpt.get();
-
-            // Xoá các token cũ chưa sử dụng của user này (nếu có)
-            tokenRepository.deleteByUser(user);
-
-            // Sinh token ngẫu nhiên UUID
-            String token = UUID.randomUUID().toString();
-            LocalDateTime expiryDate = LocalDateTime.now().plusSeconds(resetTokenExpirationMs / 1000);
-
-            PasswordResetToken resetToken = PasswordResetToken.builder()
-                    .token(token)
-                    .user(user)
-                    .expiryDate(expiryDate)
-                    .used(false)
-                    .build();
-
-            tokenRepository.save(resetToken);
-
-            // Gửi email link
-            String resetLink = resetPasswordUrl + "?token=" + token;
-            emailService.sendPasswordResetEmail(user.getEmail(), resetLink);
+        // (2) Kiểm tra định dạng
+        if (!EMAIL_PATTERN.matcher(email).matches()) {
+            throw new RuntimeException("Email không đúng định dạng (ví dụ đúng: nguyenvana@gmail.com). Vui lòng kiểm tra lại!");
         }
 
-        // TIÊU CHÍ BẢO MẬT: Dù email có tồn tại hay không thì vẫn trả về cùng 1 thông
-        // báo
-        return "Nếu email của bạn tồn tại trong hệ thống, chúng tôi đã gửi liên kết đặt lại mật khẩu. Vui lòng kiểm tra hộp thư (liên kết có hiệu lực trong 30 phút)!";
+        // (3) Đang bị khoá do nhập sai quá nhiều lần?
+        long lockedSeconds = forgotPasswordFailureLimiter.secondsLocked(clientKey);
+        if (lockedSeconds > 0) {
+            throw new TooManyRequestsException(
+                    "Bạn đã nhập sai email quá nhiều lần. Vui lòng thử lại sau " + formatWait(lockedSeconds) + ".",
+                    lockedSeconds);
+        }
+
+        // (4) Email phải tồn tại trong hệ thống
+        User user = userRepository.findByEmailIgnoreCase(email).orElse(null);
+        if (user == null) {
+            int remaining = forgotPasswordFailureLimiter.recordFailure(clientKey);
+            if (remaining == 0) {
+                long lock = forgotPasswordFailureLimiter.secondsLocked(clientKey);
+                throw new TooManyRequestsException(
+                        "Bạn đã nhập sai email quá nhiều lần. Vui lòng thử lại sau " + formatWait(lock) + ".",
+                        lock);
+            }
+            throw new RuntimeException("Email '" + email + "' chưa được đăng ký trong hệ thống. "
+                    + "Vui lòng kiểm tra lại (còn " + remaining + " lần thử).");
+        }
+        forgotPasswordFailureLimiter.reset(clientKey);
+
+        // (5) Chống spam gửi email liên tục
+        long waitSeconds = forgotPasswordRateLimiter.secondsUntilAllowed(email);
+        if (waitSeconds > 0) {
+            throw new TooManyRequestsException(
+                    "Bạn vừa yêu cầu gửi email đặt lại mật khẩu. Vui lòng đợi " + formatWait(waitSeconds)
+                            + " rồi thử lại, và kiểm tra cả hộp thư Spam.",
+                    waitSeconds);
+        }
+
+        // Xoá các token cũ chưa sử dụng của user này (nếu có)
+        tokenRepository.deleteByUser(user);
+
+        // Sinh token ngẫu nhiên UUID
+        String token = UUID.randomUUID().toString();
+        LocalDateTime expiryDate = LocalDateTime.now().plusSeconds(resetTokenExpirationMs / 1000);
+
+        PasswordResetToken resetToken = PasswordResetToken.builder()
+                .token(token)
+                .user(user)
+                .expiryDate(expiryDate)
+                .used(false)
+                .build();
+
+        tokenRepository.save(resetToken);
+        forgotPasswordRateLimiter.recordSent(email);
+
+        // (6) Gửi email CHẠY NGẦM, sau khi token đã lưu DB thành công -> API trả kết quả ngay
+        String toEmail = user.getEmail();
+        String resetLink = resetPasswordUrl + "?token=" + token;
+        AfterCommit.run(() -> emailService.sendPasswordResetEmail(toEmail, resetLink));
+
+        return "Đã gửi liên kết đặt lại mật khẩu tới " + toEmail
+                + ". Vui lòng kiểm tra hộp thư (kể cả mục Spam). Liên kết có hiệu lực trong 30 phút.";
+    }
+
+    /** Hiển thị thời gian chờ dễ đọc: "45 giây" hoặc "12 phút". */
+    private String formatWait(long seconds) {
+        if (seconds < 60) {
+            return seconds + " giây";
+        }
+        return ((seconds + 59) / 60) + " phút";
     }
 
     // 9. TÍNH NĂNG ĐẶT LẠI MẬT KHẨU MỚI (Từ link trong email)
