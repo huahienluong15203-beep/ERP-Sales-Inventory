@@ -1,5 +1,7 @@
 package com.erp.backend.service;
 
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import java.time.Clock;
@@ -18,10 +20,9 @@ import java.util.concurrent.ConcurrentHashMap;
 @Component
 public class ForgotPasswordFailureLimiter {
 
-    static final int MAX_FAILURES = 5;
-    static final Duration LOCK_DURATION = Duration.ofMinutes(5);
-
     private final Clock clock;
+    private final int maxFailures;
+    private final Duration lockDuration;
     private final Map<String, State> states = new ConcurrentHashMap<>();
 
     private static final class State {
@@ -29,12 +30,22 @@ public class ForgotPasswordFailureLimiter {
         Instant lockedUntil;
     }
 
-    public ForgotPasswordFailureLimiter() {
-        this(Clock.systemUTC());
+    @Autowired
+    public ForgotPasswordFailureLimiter(
+            @Value("${erp.app.forgot-password.max-wrong-attempts:5}") int maxFailures,
+            @Value("${erp.app.forgot-password.lock-seconds:300}") long lockSeconds) {
+        this(Clock.systemUTC(), maxFailures, lockSeconds);
     }
 
+    /** Dùng trong test: mặc định sai 5 lần khoá 5 phút. */
     ForgotPasswordFailureLimiter(Clock clock) {
+        this(clock, 5, 300);
+    }
+
+    ForgotPasswordFailureLimiter(Clock clock, int maxFailures, long lockSeconds) {
         this.clock = clock;
+        this.maxFailures = maxFailures;
+        this.lockDuration = Duration.ofSeconds(lockSeconds);
     }
 
     /** Số giây còn bị khoá. Trả về 0 nếu không bị khoá. */
@@ -67,11 +78,11 @@ public class ForgotPasswordFailureLimiter {
         State state = states.computeIfAbsent(key(clientKey), k -> new State());
         synchronized (state) {
             state.failures++;
-            if (state.failures >= MAX_FAILURES) {
-                state.lockedUntil = clock.instant().plus(LOCK_DURATION);
+            if (state.failures >= maxFailures) {
+                state.lockedUntil = clock.instant().plus(lockDuration);
                 return 0;
             }
-            return MAX_FAILURES - state.failures;
+            return maxFailures - state.failures;
         }
     }
 

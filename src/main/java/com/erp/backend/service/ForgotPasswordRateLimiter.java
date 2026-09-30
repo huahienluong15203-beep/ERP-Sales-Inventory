@@ -1,5 +1,7 @@
 package com.erp.backend.service;
 
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import java.time.Clock;
@@ -14,25 +16,41 @@ import java.util.concurrent.ConcurrentHashMap;
  * Chống spam gửi email "Quên mật khẩu" theo từng địa chỉ email:
  * - Hai lần gửi liên tiếp phải cách nhau ít nhất 60 giây.
  * - Tối đa 5 lần gửi trong 1 giờ.
+ * Hai con số này đổi được trong application.properties (xem erp.app.forgot-password.*).
  *
  * Lưu trong bộ nhớ (reset khi khởi động lại server) - đủ dùng cho quy mô dự án.
  */
 @Component
 public class ForgotPasswordRateLimiter {
 
-    static final Duration COOLDOWN = Duration.ofSeconds(60);
     static final Duration WINDOW = Duration.ofHours(1);
-    static final int MAX_PER_WINDOW = 5;
 
     private final Clock clock;
+    private final Duration cooldown;
+    private final int maxPerWindow;
     private final Map<String, Deque<Instant>> history = new ConcurrentHashMap<>();
 
-    public ForgotPasswordRateLimiter() {
-        this(Clock.systemUTC());
+    @Autowired
+    public ForgotPasswordRateLimiter(
+            @Value("${erp.app.forgot-password.cooldown-seconds:60}") long cooldownSeconds,
+            @Value("${erp.app.forgot-password.max-per-hour:5}") int maxPerHour) {
+        this(Clock.systemUTC(), cooldownSeconds, maxPerHour);
     }
 
+    /** Dùng trong test: mặc định 60 giây, 5 lần/giờ. */
     ForgotPasswordRateLimiter(Clock clock) {
+        this(clock, 60, 5);
+    }
+
+    ForgotPasswordRateLimiter(Clock clock, long cooldownSeconds, int maxPerHour) {
         this.clock = clock;
+        this.cooldown = Duration.ofSeconds(cooldownSeconds);
+        this.maxPerWindow = maxPerHour;
+    }
+
+    /** Số giây phải chờ giữa 2 lần gửi (để Frontend hiển thị đếm ngược). */
+    public long getCooldownSeconds() {
+        return cooldown.getSeconds();
     }
 
     /** Số giây còn phải đợi trước khi được gửi tiếp. Trả về 0 nếu được gửi ngay. */
@@ -49,11 +67,11 @@ public class ForgotPasswordRateLimiter {
             }
             long wait = 0;
             Instant last = sent.peekLast();
-            Instant cooldownEnd = last.plus(COOLDOWN);
+            Instant cooldownEnd = last.plus(cooldown);
             if (cooldownEnd.isAfter(now)) {
                 wait = secondsBetween(now, cooldownEnd);
             }
-            if (sent.size() >= MAX_PER_WINDOW) {
+            if (sent.size() >= maxPerWindow) {
                 Instant windowEnd = sent.peekFirst().plus(WINDOW);
                 wait = Math.max(wait, secondsBetween(now, windowEnd));
             }

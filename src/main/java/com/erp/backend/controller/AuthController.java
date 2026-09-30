@@ -4,6 +4,7 @@ import com.erp.backend.dto.LoginRequest;
 import com.erp.backend.dto.LoginResponse;
 import com.erp.backend.dto.MessageResponse;
 import com.erp.backend.service.AuthService;
+import com.erp.backend.service.ForgotPasswordRateLimiter;
 import lombok.RequiredArgsConstructor;
 import com.erp.backend.dto.ForgotPasswordRequest;
 import com.erp.backend.dto.ResetPasswordRequest;
@@ -24,6 +25,7 @@ import org.springframework.web.bind.annotation.*;
 public class AuthController {
 
     private final AuthService authService;
+    private final ForgotPasswordRateLimiter forgotPasswordRateLimiter;
 
     // 1. API ĐĂNG NHẬP (Story S1-01)
     @PostMapping("/login")
@@ -52,7 +54,10 @@ public class AuthController {
                                             HttpServletRequest httpRequest) {
         try {
             String message = authService.forgotPassword(request, httpRequest.getRemoteAddr());
-            return ResponseEntity.ok(new MessageResponse(message));
+            // Kèm số giây phải chờ trước khi gửi lại để Frontend đếm ngược đúng cấu hình
+            return ResponseEntity.ok(Map.of(
+                    "message", message,
+                    "cooldownSeconds", forgotPasswordRateLimiter.getCooldownSeconds()));
         } catch (TooManyRequestsException e) {
             // 429: gửi quá nhanh -> báo số giây phải đợi để Frontend đếm ngược
             return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
