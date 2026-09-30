@@ -82,6 +82,10 @@ public class User {
     @Column(name = "password_changed_at")
     private LocalDateTime passwordChangedAt;
 
+    // Quản lý đơn phiên (Single Active Session): Mỗi tài khoản chỉ có duy nhất 1 phiên hoạt động
+    @Column(name = "active_session_id", length = 100)
+    private String activeSessionId;
+
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;

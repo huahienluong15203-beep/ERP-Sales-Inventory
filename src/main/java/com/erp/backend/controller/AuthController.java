@@ -34,11 +34,13 @@ public class AuthController {
         }
     }
 
-    // 2. API ĐĂNG XUẤT (Story S1-02)
+    // 2. API ĐĂNG XUẤT (Story S1-02 & Đơn phiên làm việc)
     @PostMapping("/logout")
-    public ResponseEntity<?> logoutUser() {
+    public ResponseEntity<?> logoutUser(@AuthenticationPrincipal UserDetailsImpl userDetails) {
+        if (userDetails != null) {
+            authService.logout(userDetails.getUsername());
+        }
         return ResponseEntity.ok(new MessageResponse("Đăng xuất thành công!"));
-
     }
 
     // 3. API QUÊN MẬT KHẨU (Gửi mail đặt lại mật khẩu)
