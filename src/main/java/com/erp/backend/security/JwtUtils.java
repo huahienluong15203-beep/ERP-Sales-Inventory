@@ -22,14 +22,19 @@ public class JwtUtils {
         return Keys.hmacShaKeyFor(jwtSecret.getBytes());
     }
 
-    // 1. Tạo chuỗi Token JWT khi đăng nhập thành công (S1-01)
-    public String generateTokenFromUsername(String username) {
+    // 1. Tạo chuỗi Token JWT kèm Session ID (Story S1-01 & Single Active Session)
+    public String generateTokenFromUsernameAndSession(String username, String sessionId) {
         return Jwts.builder()
                 .setSubject(username)
+                .claim("sid", sessionId)
                 .setIssuedAt(new Date())
                 .setExpiration(new Date((new Date()).getTime() + jwtExpirationMs))
                 .signWith(key(), SignatureAlgorithm.HS256)
                 .compact();
+    }
+
+    public String generateTokenFromUsername(String username) {
+        return generateTokenFromUsernameAndSession(username, java.util.UUID.randomUUID().toString());
     }
 
     // 2. Trích xuất Username từ Token gửi lên (S1-02)
@@ -40,6 +45,20 @@ public class JwtUtils {
                 .parseClaimsJws(token)
                 .getBody()
                 .getSubject();
+    }
+
+    // Trích xuất Session ID (sid) từ Token gửi lên để kiểm tra đơn phiên
+    public String getSessionIdFromJwtToken(String token) {
+        try {
+            return Jwts.parserBuilder()
+                    .setSigningKey(key())
+                    .build()
+                    .parseClaimsJws(token)
+                    .getBody()
+                    .get("sid", String.class);
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     // 3. Trích xuất thời điểm phát hành (issuedAt) từ token

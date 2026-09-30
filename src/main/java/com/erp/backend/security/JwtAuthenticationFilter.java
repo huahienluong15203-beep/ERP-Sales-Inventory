@@ -41,28 +41,46 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             // 2. Nếu có token và token hợp lệ
             if (jwt != null && jwtUtils.validateJwtToken(jwt)) {
                 String username = jwtUtils.getUsernameFromJwtToken(jwt);
+                String jwtSessionId = jwtUtils.getSessionIdFromJwtToken(jwt);
 
                 // 3. Lấy thông tin user và quyền từ Database
                 UserDetails userDetails = userDetailsService.loadUserByUsername(username);
 
                 // 4. Reloading current account state invalidates existing JWTs after an admin lock.
                 if (userDetails.isEnabled() && userDetails.isAccountNonLocked()) {
+                    User dbUser = userRepository.findByUsername(username).orElse(null);
 
-                    // 5. S1-04: Thu hồi phiên cũ nếu mật khẩu đã bị đổi sau khi token được cấp.
+                    // 5. Kiểm tra Đơn phiên làm việc (Single Active Session): 1 nick chỉ 1 phiên duy nhất
+                    if (dbUser != null) {
+                        String currentActiveSessionId = dbUser.getActiveSessionId();
+                        boolean isSessionInvalid = false;
+                        if (currentActiveSessionId != null && (jwtSessionId == null || !currentActiveSessionId.equals(jwtSessionId))) {
+                            isSessionInvalid = true;
+                        } else if (currentActiveSessionId == null && jwtSessionId != null) {
+                            isSessionInvalid = true;
+                        }
+
+                        if (isSessionInvalid) {
+                            logger.warn("Phiên làm việc của '{}' đã bị thu hồi do đăng nhập ở thiết bị/cửa sổ khác hoặc đã đăng xuất.", username);
+                            response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+                            response.setContentType("application/json;charset=UTF-8");
+                            response.getWriter().write("{\"status\":401,\"error\":\"Unauthorized\",\"message\":\"Phiên làm việc của bạn đã hết hạn do tài khoản đã được đăng nhập ở một thiết bị hoặc phiên làm việc khác. Vui lòng đăng nhập lại!\",\"code\":\"SESSION_SUPERSEDED\"}");
+                            return;
+                        }
+                    }
+
+                    // 6. S1-04: Thu hồi phiên cũ nếu mật khẩu đã bị đổi sau khi token được cấp.
                     //    Token issuedAt phải SAU thời điểm đổi mật khẩu gần nhất.
                     boolean tokenIsValid = true;
                     Date issuedAt = jwtUtils.getIssuedAtFromToken(jwt);
-                    if (issuedAt != null) {
-                        User dbUser = userRepository.findByUsername(username).orElse(null);
-                        if (dbUser != null && dbUser.getPasswordChangedAt() != null) {
-                            long changedAtEpochSec = dbUser.getPasswordChangedAt()
-                                    .atZone(ZoneId.systemDefault()).toEpochSecond();
-                            long issuedAtEpochSec = issuedAt.getTime() / 1000;
-                            if (issuedAtEpochSec < changedAtEpochSec - 1) {
-                                // Token được cấp TRƯỚC khi đổi mật khẩu -> thu hồi
-                                logger.info("Token của '{}' bị thu hồi do đổi mật khẩu sau khi phát hành.", username);
-                                tokenIsValid = false;
-                            }
+                    if (issuedAt != null && dbUser != null && dbUser.getPasswordChangedAt() != null) {
+                        long changedAtEpochSec = dbUser.getPasswordChangedAt()
+                                .atZone(ZoneId.systemDefault()).toEpochSecond();
+                        long issuedAtEpochSec = issuedAt.getTime() / 1000;
+                        if (issuedAtEpochSec < changedAtEpochSec - 1) {
+                            // Token được cấp TRƯỚC khi đổi mật khẩu -> thu hồi
+                            logger.info("Token của '{}' bị thu hồi do đổi mật khẩu sau khi phát hành.", username);
+                            tokenIsValid = false;
                         }
                     }
 

@@ -75,10 +75,10 @@ public class SecurityConfig {
                 .csrf(csrf -> csrf.disable())
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
-                        // 1. Mở cửa công khai cho API đăng nhập
+                        // 1. Mở cửa công khai cho API đăng nhập & quên mật khẩu
                         .requestMatchers("/api/auth/**").permitAll()
-                        // 2. Mở cửa cho navigation context (tự trích xuất UserDetails nếu có token)
-                        .requestMatchers("/api/v1/navigation/**").permitAll()
+                        // 2. Navigation context bắt buộc phải có Token phiên làm việc hợp lệ
+                        .requestMatchers("/api/v1/navigation/**").authenticated()
                         // 3. Mở cửa công khai cho toàn bộ giao diện Swagger UI
                         .requestMatchers(
                                 "/v3/api-docs/**",

@@ -80,9 +80,13 @@ public class AuthService {
 
         user.setFailedLoginAttempts(0);
         user.setLockUntil(null);
+
+        // Single Active Session (Đơn phiên): Cấp Session ID mới, vô hiệu hoá phiên cũ
+        String newSessionId = UUID.randomUUID().toString();
+        user.setActiveSessionId(newSessionId);
         userRepository.save(user);
 
-        String jwtToken = jwtUtils.generateTokenFromUsername(user.getUsername());
+        String jwtToken = jwtUtils.generateTokenFromUsernameAndSession(user.getUsername(), newSessionId);
 
         // Sắp xếp roles theo thứ tự ưu tiên để frontend luôn chọn đúng vai trò cao nhất
         // ROLE_ADMIN → ROLE_SALES_MANAGER → ROLE_WH_MANAGER → ROLE_ACCOUNTANT → ...
@@ -111,6 +115,17 @@ public class AuthService {
                 .roles(roles)
                 .mustChangePassword(user.isMustChangePassword())
                 .build();
+    }
+
+    // Đăng xuất: Vô hiệu hoá phiên làm việc hiện tại của người dùng
+    @Transactional
+    public void logout(String username) {
+        if (username != null && !username.isBlank()) {
+            userRepository.findByUsername(username).ifPresent(user -> {
+                user.setActiveSessionId(null);
+                userRepository.save(user);
+            });
+        }
     }
 
     // 8. TÍNH NĂNG QUÊN MẬT KHẨU (Gửi mail kèm link 30 phút)

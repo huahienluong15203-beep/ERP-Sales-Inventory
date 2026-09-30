@@ -36,18 +36,14 @@ public class UserProfileController {
         Map<String, Object> response = new HashMap<>();
         Map<String, Object> userInfo = new HashMap<>();
 
-        User user = null;
-        // 1. Nếu có token và UserDetails xác thực từ Spring Security
-        if (userDetails != null && userDetails.getId() != null) {
-            user = userRepository.findById(userDetails.getId()).orElse(null);
+        // Bắt buộc phải có phiên đăng nhập hợp lệ (Single Active Session)
+        if (userDetails == null || userDetails.getId() == null) {
+            return ResponseEntity.status(org.springframework.http.HttpStatus.UNAUTHORIZED).build();
         }
 
-        // 2. Nếu chưa có user (hoặc chuyển đổi vai trò ở môi trường kiểm thử/demo), lấy tài khoản tương ứng
-        if (user == null && role != null && !role.isBlank()) {
-            String sampleUsername = getSampleUsernameByRole(role);
-            if (sampleUsername != null) {
-                user = userRepository.findByUsername(sampleUsername).orElse(null);
-            }
+        User user = userRepository.findById(userDetails.getId()).orElse(null);
+        if (user == null) {
+            return ResponseEntity.status(org.springframework.http.HttpStatus.UNAUTHORIZED).build();
         }
 
         List<String> roleOrder = List.of(
