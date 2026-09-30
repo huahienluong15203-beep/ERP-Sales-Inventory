@@ -34,7 +34,7 @@ public class DataInitializer implements CommandLineRunner {
         }
 
         // 2. Khởi tạo & đảm bảo mật khẩu hoạt động cho toàn bộ 7 tài khoản mẫu chuẩn Sprint 1
-        seedUser("admin", "admin123", "Quản Trị Viên Hệ Thống", "admin@erp.com", "0987654321", RoleName.ROLE_ADMIN);
+        seedUser("admin", "admin123", "Quản Trị Viên Hệ Thống", "okluon123pk@gmail.com", "0987654321", RoleName.ROLE_ADMIN);
         seedUser("sales_manager", "manager123", "Trần Quản Lý Kinh Doanh", "manager@erp.com", "0912345678", RoleName.ROLE_SALES_MANAGER);
         seedUser("sales_rep", "sales123", "Lê Văn Bán Hàng", "salesrep@erp.com", "0923456789", RoleName.ROLE_SALES_REP);
         seedUser("wh_staff", "wh123", "Nguyễn Văn Thủ Kho", "warehouse@erp.com", "0934567890", RoleName.ROLE_WAREHOUSE);
@@ -57,6 +57,7 @@ public class DataInitializer implements CommandLineRunner {
             existingUser.setLockUntil(null);
             existingUser.setMustChangePassword(false);
             existingUser.setFullName(fullName);
+            existingUser.setEmail(email);
             existingUser.setRoles(roles);
             userRepository.save(existingUser);
         }, () -> {
