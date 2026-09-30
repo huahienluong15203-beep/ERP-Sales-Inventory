@@ -74,6 +74,13 @@ public class SecurityConfig {
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                 .csrf(csrf -> csrf.disable())
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                .exceptionHandling(ex -> ex
+                        .authenticationEntryPoint((request, response, authException) -> {
+                            response.setStatus(jakarta.servlet.http.HttpServletResponse.SC_UNAUTHORIZED);
+                            response.setContentType("application/json;charset=UTF-8");
+                            response.getWriter().write("{\"status\":401,\"error\":\"Unauthorized\",\"message\":\"Phiên làm việc đã hết hạn hoặc không hợp lệ. Vui lòng đăng nhập lại!\",\"code\":\"SESSION_EXPIRED\"}");
+                        })
+                )
                 .authorizeHttpRequests(auth -> auth
                         // 1. Mở cửa công khai cho API đăng nhập & quên mật khẩu
                         .requestMatchers("/api/auth/**").permitAll()

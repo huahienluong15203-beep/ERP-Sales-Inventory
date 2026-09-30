@@ -67,6 +67,7 @@ public class UserManagementService {
         user.setLockUntil(null);
         user.setLockReason(reason);
         user.setFailedLoginAttempts(0);
+        user.setActiveSessionId(null); // Thu hồi ngay lập tức phiên làm việc hiện tại
 
         return toAccountResponse(userRepository.save(user));
     }
