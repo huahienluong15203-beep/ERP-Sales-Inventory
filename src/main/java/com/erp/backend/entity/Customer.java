@@ -75,6 +75,29 @@ public class Customer {
     @Column(name = "status_reason", length = 500)
     private String statusReason;
 
+    // S3-05: Hạn mức tiền tối đa cho phép nợ (VND). Bắt buộc nhập lý do khi thay đổi.
+    @Column(name = "credit_limit", precision = 15, scale = 2)
+    @Builder.Default
+    private java.math.BigDecimal creditLimit = java.math.BigDecimal.ZERO;
+
+    // S3-05: Số ngày nợ tối đa cho phép.
+    @Column(name = "max_debt_days")
+    @Builder.Default
+    private Integer maxDebtDays = 30;
+
+    // S3-07: Khóa giao dịch đại lý (chặn tạo đơn mới trên mọi nền tảng khi có rủi ro công nợ).
+    @Column(name = "transaction_locked", nullable = false)
+    @Builder.Default
+    private Boolean transactionLocked = false;
+
+    // S3-07: Lý do khóa / mở giao dịch (bắt buộc nhập)
+    @Column(name = "transaction_lock_reason", length = 500)
+    private String transactionLockReason;
+
+    // S3-07: Thời điểm khóa giao dịch
+    @Column(name = "transaction_locked_at")
+    private LocalDateTime transactionLockedAt;
+
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;
@@ -82,4 +105,8 @@ public class Customer {
     @UpdateTimestamp
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
+
+    public boolean isTransactionLocked() {
+        return Boolean.TRUE.equals(transactionLocked);
+    }
 }

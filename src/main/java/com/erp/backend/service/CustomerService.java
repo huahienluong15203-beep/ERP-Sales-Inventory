@@ -15,14 +15,22 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.context.request.ServletRequestAttributes;
+import com.erp.backend.config.AuditLogInterceptor;
+import com.erp.backend.entity.AuditModule;
 
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
 /**
  * S3-03: Quản lý hồ sơ đại lý.
+ * S3-05: Khai báo hạn mức công nợ và số ngày nợ tối đa cho phép.
  * S3-06: Phân công nhân viên phụ trách, chuyển giao hàng loạt, lịch sử phân công.
+ * S3-07: Khóa / mở giao dịch đại lý để kiểm soát rủi ro công nợ.
  * S3-08: Tìm kiếm và lọc danh sách đại lý.
  */
 @Service
@@ -38,6 +46,7 @@ public class CustomerService {
     private final CustomerAssignmentHistoryRepository historyRepository;
     private final RegionRepository regionRepository;
     private final UserRepository userRepository;
+    private final AuditLogService auditLogService;
 
     // ======================= S3-08: TÌM KIẾM / XEM =======================
 
@@ -155,6 +164,164 @@ public class CustomerService {
         customer.setStatus(newStatus);
         customer.setStatusReason(INACTIVE.equals(newStatus) ? reason : null);
         return toResponse(customerRepository.save(customer));
+    }
+
+    // ======================= S3-05: HẠN MỨC CÔNG NỢ & SỐ NGÀY NỢ =======================
+
+    /**
+     * S3-05: Khai báo hạn mức tiền tối đa và số ngày nợ tối đa.
+     * Bắt buộc nhập lý do khi thay đổi để ghi nhật ký hệ thống.
+     * Chỉ Kế toán công nợ, Quản lý kinh doanh và Admin mới có quyền thực hiện.
+     */
+    @Transactional
+    public CustomerResponse updateDebtLimit(Long id, UpdateDebtLimitRequest req, UserDetailsImpl actor) {
+        checkDebtManagementAccess(actor);
+
+        Customer customer = customerRepository.findByIdForUpdate(id)
+                .orElseThrow(() -> BusinessException.notFound("Không tìm thấy đại lý"));
+
+        String reason = blankToNull(req.getReason());
+        if (reason == null) {
+            throw new BusinessException(HttpStatus.BAD_REQUEST, "REASON_REQUIRED",
+                    "Bắt buộc nhập lý do khi thay đổi hạn mức công nợ", "reason");
+        }
+
+        BigDecimal oldCreditLimit = customer.getCreditLimit() != null ? customer.getCreditLimit() : BigDecimal.ZERO;
+        Integer oldMaxDebtDays = customer.getMaxDebtDays() != null ? customer.getMaxDebtDays() : 30;
+
+        if (oldCreditLimit.compareTo(req.getCreditLimit()) == 0 && oldMaxDebtDays.equals(req.getMaxDebtDays())) {
+            throw BusinessException.badRequest("LIMIT_UNCHANGED",
+                    "Hạn mức tiền và số ngày nợ không có thay đổi so với hiện tại");
+        }
+
+        customer.setCreditLimit(req.getCreditLimit());
+        customer.setMaxDebtDays(req.getMaxDebtDays());
+        Customer saved = customerRepository.save(customer);
+
+        // Ghi nhật ký kiểm toán hệ thống (S2-04, S3-05)
+        String oldValue = String.format("{\"creditLimit\":%s,\"maxDebtDays\":%d}",
+                oldCreditLimit.toPlainString(), oldMaxDebtDays);
+        String newValue = String.format("{\"creditLimit\":%s,\"maxDebtDays\":%d}",
+                req.getCreditLimit().toPlainString(), req.getMaxDebtDays());
+        auditLogService.record(
+                AuditModule.DEBT_LIMIT,
+                "UPDATE_DEBT_LIMIT",
+                "CUSTOMER",
+                saved.getId(),
+                saved.getCode(),
+                oldValue,
+                newValue,
+                reason,
+                actor);
+        markAuditLogged();
+
+        return toResponse(saved);
+    }
+
+    // ======================= S3-07: KHÓA / MỞ GIAO DỊCH ĐẠI LÝ =======================
+
+    /**
+     * S3-07: Khóa hoặc mở giao dịch với một đại lý.
+     * - Bắt buộc nhập lý do khi khóa hoặc mở.
+     * - Đại lý bị khóa không tạo được đơn mới trên mọi nền tảng.
+     * - Ghi lại nhật ký kiểm toán hệ thống (S2-04).
+     */
+    @Transactional
+    public CustomerResponse setTransactionLock(Long id, CustomerTransactionLockRequest req, UserDetailsImpl actor) {
+        checkDebtManagementAccess(actor);
+
+        Customer customer = customerRepository.findByIdForUpdate(id)
+                .orElseThrow(() -> BusinessException.notFound("Không tìm thấy đại lý"));
+
+        String reason = blankToNull(req.getReason());
+        if (reason == null) {
+            throw new BusinessException(HttpStatus.BAD_REQUEST, "REASON_REQUIRED",
+                    "Bắt buộc nhập lý do khi khóa hoặc mở giao dịch đại lý", "reason");
+        }
+
+        boolean targetLocked = Boolean.TRUE.equals(req.getLocked());
+        if (customer.isTransactionLocked() == targetLocked) {
+            throw BusinessException.badRequest("LOCK_STATUS_UNCHANGED",
+                    targetLocked ? "Đại lý đã ở trạng thái bị khóa giao dịch" : "Đại lý đang ở trạng thái mở giao dịch");
+        }
+
+        customer.setTransactionLocked(targetLocked);
+        customer.setTransactionLockReason(reason);
+        customer.setTransactionLockedAt(targetLocked ? LocalDateTime.now() : null);
+        Customer saved = customerRepository.save(customer);
+
+        // Ghi nhật ký kiểm toán hệ thống (S2-04, S3-07)
+        String action = targetLocked ? "LOCK_TRANSACTION" : "UNLOCK_TRANSACTION";
+        String oldValue = String.format("{\"transactionLocked\":%b}", !targetLocked);
+        String newValue = String.format("{\"transactionLocked\":%b}", targetLocked);
+        auditLogService.record(
+                AuditModule.DEBT_LIMIT,
+                action,
+                "CUSTOMER",
+                saved.getId(),
+                saved.getCode(),
+                oldValue,
+                newValue,
+                reason,
+                actor);
+        markAuditLogged();
+
+        return toResponse(saved);
+    }
+
+    /**
+     * S3-07 & S4-02: Kiểm tra đại lý có đủ điều kiện tạo đơn hàng mới hay không.
+     * Chặn tạo đơn mới trên mọi nền tảng nếu bị khóa giao dịch hoặc ngừng hoạt động.
+     */
+    @Transactional(readOnly = true)
+    public OrderCreationCheckResponse checkOrderCreation(Long id) {
+        Customer customer = findCustomer(id);
+        if (customer.isTransactionLocked()) {
+            return new OrderCreationCheckResponse(
+                    customer.getId(),
+                    customer.getCode(),
+                    customer.getName(),
+                    false,
+                    "Đại lý đang bị khóa giao dịch: " + customer.getTransactionLockReason() + ". Chặn tạo đơn mới trên mọi nền tảng.",
+                    customer.getCreditLimit(),
+                    customer.getMaxDebtDays(),
+                    true);
+        }
+        if (!ACTIVE.equalsIgnoreCase(customer.getStatus())) {
+            return new OrderCreationCheckResponse(
+                    customer.getId(),
+                    customer.getCode(),
+                    customer.getName(),
+                    false,
+                    "Đại lý đã ngừng giao dịch (" + (customer.getStatusReason() != null ? customer.getStatusReason() : "INACTIVE") + ").",
+                    customer.getCreditLimit(),
+                    customer.getMaxDebtDays(),
+                    false);
+        }
+        return new OrderCreationCheckResponse(
+                customer.getId(),
+                customer.getCode(),
+                customer.getName(),
+                true,
+                null,
+                customer.getCreditLimit(),
+                customer.getMaxDebtDays(),
+                false);
+    }
+
+    /**
+     * Nghiệp vụ kiểm tra bắt buộc ném lỗi nếu bị chặn tạo đơn (dùng cho các service tạo đơn hàng).
+     */
+    public void assertCanCreateOrder(Customer customer) {
+        if (customer.isTransactionLocked()) {
+            throw BusinessException.forbidden("CUSTOMER_TRANSACTION_LOCKED",
+                    "Đại lý " + customer.getName() + " (" + customer.getCode() + ") đang bị khóa giao dịch: "
+                            + customer.getTransactionLockReason() + ". Chặn tạo đơn mới trên mọi nền tảng.");
+        }
+        if (!ACTIVE.equalsIgnoreCase(customer.getStatus())) {
+            throw BusinessException.badRequest("CUSTOMER_INACTIVE",
+                    "Đại lý " + customer.getName() + " (" + customer.getCode() + ") đã ngừng giao dịch.");
+        }
     }
 
     // ======================= S3-06: PHÂN CÔNG NGƯỜI PHỤ TRÁCH =======================
@@ -314,12 +481,34 @@ public class CustomerService {
                 c.getNote(),
                 c.getStatus(),
                 c.getStatusReason(),
+                c.getCreditLimit() != null ? c.getCreditLimit() : BigDecimal.ZERO,
+                c.getMaxDebtDays() != null ? c.getMaxDebtDays() : 30,
+                c.isTransactionLocked(),
+                c.getTransactionLockReason(),
+                c.getTransactionLockedAt(),
                 c.getCreatedAt(),
                 c.getUpdatedAt());
     }
 
     private RefItem toUserRef(User u) {
         return u == null ? null : new RefItem(u.getId(), u.getUsername(), u.getFullName());
+    }
+
+    private void checkDebtManagementAccess(UserDetailsImpl actor) {
+        if (actor == null || !CustomerAccess.hasFullAccess(actor)) {
+            throw BusinessException.forbidden("FORBIDDEN",
+                    "Chỉ Kế toán công nợ, Quản lý kinh doanh hoặc Admin mới có quyền thực hiện thao tác này");
+        }
+    }
+
+    private static void markAuditLogged() {
+        try {
+            ServletRequestAttributes attributes = (ServletRequestAttributes) RequestContextHolder.getRequestAttributes();
+            if (attributes != null && attributes.getRequest() != null) {
+                attributes.getRequest().setAttribute(AuditLogInterceptor.AUDIT_LOGGED_ATTR, Boolean.TRUE);
+            }
+        } catch (Exception ignored) {
+        }
     }
 
     private static String blankToNull(String value) {

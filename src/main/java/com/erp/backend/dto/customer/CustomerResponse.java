@@ -2,10 +2,13 @@ package com.erp.backend.dto.customer;
 
 import com.erp.backend.dto.user.RefItem;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 /**
  * S3-03: Hồ sơ đại lý trả về cho Frontend.
+ * S3-05: Hạn mức tiền tối đa và số ngày nợ tối đa.
+ * S3-07: Trạng thái khóa giao dịch và lý do.
  * region: {id, code, name} | salesRep: {id, code = tên tài khoản, name = họ tên} (null nếu chưa gán)
  */
 public record CustomerResponse(
@@ -24,6 +27,11 @@ public record CustomerResponse(
         String note,
         String status,
         String statusReason,
+        BigDecimal creditLimit,
+        Integer maxDebtDays,
+        Boolean transactionLocked,
+        String transactionLockReason,
+        LocalDateTime transactionLockedAt,
         LocalDateTime createdAt,
         LocalDateTime updatedAt) {
 }

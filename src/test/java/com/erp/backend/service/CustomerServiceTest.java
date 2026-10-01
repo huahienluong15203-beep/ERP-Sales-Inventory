@@ -34,11 +34,13 @@ class CustomerServiceTest {
     @Mock private CustomerAssignmentHistoryRepository historyRepository;
     @Mock private RegionRepository regionRepository;
     @Mock private UserRepository userRepository;
+    @Mock private AuditLogService auditLogService;
 
     @InjectMocks private CustomerService service;
 
     private final UserDetailsImpl accountant = actor(100, "ROLE_ACCOUNTANT");
     private final UserDetailsImpl manager = actor(101, "ROLE_SALES_MANAGER");
+    private final UserDetailsImpl salesRepActor = actor(102, "ROLE_SALES_REP");
 
     @BeforeEach
     void setUp() {
@@ -378,5 +380,239 @@ class CustomerServiceTest {
                 .isInstanceOf(BusinessException.class)
                 .extracting("code").isEqualTo("NO_CUSTOMERS_TO_TRANSFER");
         verify(historyRepository, never()).saveAll(anyList());
+    }
+
+    // ======================= S3-05: TESTS HẠN MỨC CÔNG NỢ =======================
+
+    @Test
+    @DisplayName("S3-05: Cập nhật hạn mức công nợ thành công và ghi nhật ký kiểm toán")
+    void updateDebtLimit_success_recordsAuditLog() {
+        Customer c = customer(1L, null);
+        c.setCreditLimit(java.math.BigDecimal.valueOf(50_000_000));
+        c.setMaxDebtDays(30);
+        when(customerRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(c));
+
+        UpdateDebtLimitRequest req = UpdateDebtLimitRequest.builder()
+                .creditLimit(java.math.BigDecimal.valueOf(100_000_000))
+                .maxDebtDays(45)
+                .reason("Nâng hạn mức sau 6 tháng thanh toán tốt")
+                .build();
+
+        CustomerResponse res = service.updateDebtLimit(1L, req, accountant);
+
+        assertThat(res.creditLimit()).isEqualByComparingTo(java.math.BigDecimal.valueOf(100_000_000));
+        assertThat(res.maxDebtDays()).isEqualTo(45);
+        verify(customerRepository).save(c);
+        verify(auditLogService).record(
+                eq(AuditModule.DEBT_LIMIT),
+                eq("UPDATE_DEBT_LIMIT"),
+                eq("CUSTOMER"),
+                eq(1L),
+                eq("DL-1"),
+                contains("50000000"),
+                contains("100000000"),
+                eq("Nâng hạn mức sau 6 tháng thanh toán tốt"),
+                eq(accountant));
+    }
+
+    @Test
+    @DisplayName("S3-05: Thiếu lý do thay đổi hạn mức -> báo lỗi REASON_REQUIRED")
+    void updateDebtLimit_missingReason_throwsException() {
+        Customer c = customer(1L, null);
+        when(customerRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(c));
+
+        UpdateDebtLimitRequest req = UpdateDebtLimitRequest.builder()
+                .creditLimit(java.math.BigDecimal.valueOf(100_000_000))
+                .maxDebtDays(45)
+                .reason("   ")
+                .build();
+
+        assertThatThrownBy(() -> service.updateDebtLimit(1L, req, accountant))
+                .isInstanceOf(BusinessException.class)
+                .extracting("code").isEqualTo("REASON_REQUIRED");
+    }
+
+    @Test
+    @DisplayName("S3-05: Hạn mức và số ngày nợ không đổi -> báo lỗi LIMIT_UNCHANGED")
+    void updateDebtLimit_unchanged_throwsException() {
+        Customer c = customer(1L, null);
+        c.setCreditLimit(java.math.BigDecimal.valueOf(50_000_000));
+        c.setMaxDebtDays(30);
+        when(customerRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(c));
+
+        UpdateDebtLimitRequest req = UpdateDebtLimitRequest.builder()
+                .creditLimit(java.math.BigDecimal.valueOf(50_000_000))
+                .maxDebtDays(30)
+                .reason("Giữ nguyên hạn mức")
+                .build();
+
+        assertThatThrownBy(() -> service.updateDebtLimit(1L, req, accountant))
+                .isInstanceOf(BusinessException.class)
+                .extracting("code").isEqualTo("LIMIT_UNCHANGED");
+    }
+
+    @Test
+    @DisplayName("S3-05: Vai trò không đủ quyền sửa hạn mức (vd Sales Rep) -> từ chối 403")
+    void updateDebtLimit_unauthorizedRole_throwsForbidden() {
+        UpdateDebtLimitRequest req = UpdateDebtLimitRequest.builder()
+                .creditLimit(java.math.BigDecimal.valueOf(100_000_000))
+                .maxDebtDays(45)
+                .reason("Tự nâng hạn mức")
+                .build();
+
+        assertThatThrownBy(() -> service.updateDebtLimit(1L, req, salesRepActor))
+                .isInstanceOf(BusinessException.class)
+                .extracting("status").isEqualTo(HttpStatus.FORBIDDEN);
+    }
+
+    // ======================= S3-07: TESTS KHÓA / MỞ GIAO DỊCH =======================
+
+    @Test
+    @DisplayName("S3-07: Khóa giao dịch đại lý thành công và ghi nhật ký kiểm toán")
+    void setTransactionLock_lockSuccess() {
+        Customer c = customer(1L, null);
+        c.setTransactionLocked(false);
+        when(customerRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(c));
+
+        CustomerTransactionLockRequest req = CustomerTransactionLockRequest.builder()
+                .locked(true)
+                .reason("Nợ quá hạn trên 60 ngày chưa thanh toán")
+                .build();
+
+        CustomerResponse res = service.setTransactionLock(1L, req, accountant);
+
+        assertThat(res.transactionLocked()).isTrue();
+        assertThat(res.transactionLockReason()).isEqualTo("Nợ quá hạn trên 60 ngày chưa thanh toán");
+        verify(customerRepository).save(c);
+        verify(auditLogService).record(
+                eq(AuditModule.DEBT_LIMIT),
+                eq("LOCK_TRANSACTION"),
+                eq("CUSTOMER"),
+                eq(1L),
+                eq("DL-1"),
+                contains("false"),
+                contains("true"),
+                eq("Nợ quá hạn trên 60 ngày chưa thanh toán"),
+                eq(accountant));
+    }
+
+    @Test
+    @DisplayName("S3-07: Mở giao dịch đại lý thành công và ghi nhật ký kiểm toán")
+    void setTransactionLock_unlockSuccess() {
+        Customer c = customer(1L, null);
+        c.setTransactionLocked(true);
+        c.setTransactionLockReason("Tạm khóa cũ");
+        when(customerRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(c));
+
+        CustomerTransactionLockRequest req = CustomerTransactionLockRequest.builder()
+                .locked(false)
+                .reason("Đại lý đã thanh toán hết nợ cũ")
+                .build();
+
+        CustomerResponse res = service.setTransactionLock(1L, req, manager);
+
+        assertThat(res.transactionLocked()).isFalse();
+        assertThat(res.transactionLockReason()).isEqualTo("Đại lý đã thanh toán hết nợ cũ");
+        verify(customerRepository).save(c);
+        verify(auditLogService).record(
+                eq(AuditModule.DEBT_LIMIT),
+                eq("UNLOCK_TRANSACTION"),
+                eq("CUSTOMER"),
+                eq(1L),
+                eq("DL-1"),
+                contains("true"),
+                contains("false"),
+                eq("Đại lý đã thanh toán hết nợ cũ"),
+                eq(manager));
+    }
+
+    @Test
+    @DisplayName("S3-07: Trạng thái khóa không đổi -> báo lỗi LOCK_STATUS_UNCHANGED")
+    void setTransactionLock_statusUnchanged_throwsException() {
+        Customer c = customer(1L, null);
+        c.setTransactionLocked(true);
+        when(customerRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(c));
+
+        CustomerTransactionLockRequest req = CustomerTransactionLockRequest.builder()
+                .locked(true)
+                .reason("Lại khóa tiếp")
+                .build();
+
+        assertThatThrownBy(() -> service.setTransactionLock(1L, req, accountant))
+                .isInstanceOf(BusinessException.class)
+                .extracting("code").isEqualTo("LOCK_STATUS_UNCHANGED");
+    }
+
+    @Test
+    @DisplayName("S3-07: Thiếu lý do khóa/mở -> báo lỗi REASON_REQUIRED")
+    void setTransactionLock_missingReason_throwsException() {
+        Customer c = customer(1L, null);
+        when(customerRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(c));
+
+        CustomerTransactionLockRequest req = CustomerTransactionLockRequest.builder()
+                .locked(true)
+                .reason("   ")
+                .build();
+
+        assertThatThrownBy(() -> service.setTransactionLock(1L, req, accountant))
+                .isInstanceOf(BusinessException.class)
+                .extracting("code").isEqualTo("REASON_REQUIRED");
+    }
+
+    // ======================= S3-07: TESTS KIỂM TRA ĐIỀU KIỆN TẠO ĐƠN =======================
+
+    @Test
+    @DisplayName("S3-07 & S4-02: Kiểm tra tạo đơn - Bị chặn khi đại lý bị khóa giao dịch")
+    void checkOrderCreation_locked_blocked() {
+        Customer c = customer(1L, null);
+        c.setTransactionLocked(true);
+        c.setTransactionLockReason("Nợ xấu");
+        when(customerRepository.findById(1L)).thenReturn(Optional.of(c));
+
+        OrderCreationCheckResponse res = service.checkOrderCreation(1L);
+
+        assertThat(res.allowed()).isFalse();
+        assertThat(res.blockReason()).contains("khóa giao dịch").contains("Nợ xấu");
+        assertThat(res.transactionLocked()).isTrue();
+    }
+
+    @Test
+    @DisplayName("S3-07 & S4-02: Kiểm tra tạo đơn - Bị chặn khi đại lý ngừng giao dịch (INACTIVE)")
+    void checkOrderCreation_inactive_blocked() {
+        Customer c = customer(1L, null);
+        c.setStatus("INACTIVE");
+        c.setStatusReason("Đóng cửa kinh doanh");
+        when(customerRepository.findById(1L)).thenReturn(Optional.of(c));
+
+        OrderCreationCheckResponse res = service.checkOrderCreation(1L);
+
+        assertThat(res.allowed()).isFalse();
+        assertThat(res.blockReason()).contains("ngừng giao dịch");
+    }
+
+    @Test
+    @DisplayName("S3-07 & S4-02: Kiểm tra tạo đơn - Cho phép khi đại lý ACTIVE và chưa bị khóa")
+    void checkOrderCreation_activeAndUnlocked_allowed() {
+        Customer c = customer(1L, null);
+        c.setStatus("ACTIVE");
+        c.setTransactionLocked(false);
+        when(customerRepository.findById(1L)).thenReturn(Optional.of(c));
+
+        OrderCreationCheckResponse res = service.checkOrderCreation(1L);
+
+        assertThat(res.allowed()).isTrue();
+        assertThat(res.blockReason()).isNull();
+    }
+
+    @Test
+    @DisplayName("S3-07: assertCanCreateOrder ném lỗi khi đại lý bị khóa giao dịch")
+    void assertCanCreateOrder_locked_throwsForbidden() {
+        Customer c = customer(1L, null);
+        c.setTransactionLocked(true);
+        c.setTransactionLockReason("Có nguy cơ quỵt nợ");
+
+        assertThatThrownBy(() -> service.assertCanCreateOrder(c))
+                .isInstanceOf(BusinessException.class)
+                .extracting("code").isEqualTo("CUSTOMER_TRANSACTION_LOCKED");
     }
 }
