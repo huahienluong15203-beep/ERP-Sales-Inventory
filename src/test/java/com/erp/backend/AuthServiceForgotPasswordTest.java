@@ -119,17 +119,17 @@ class AuthServiceForgotPasswordTest {
     }
 
     @Test
-    @DisplayName("Nhập email chưa đăng ký lần thứ 5 -> khoá 5 phút (429)")
+    @DisplayName("Nhập email chưa đăng ký lần thứ 5 -> khoá 1 phút (429)")
     void testForgotPassword_FifthWrongEmail_Locked() {
         when(userRepository.findByEmailIgnoreCase("unknown@erp.com")).thenReturn(Optional.empty());
         when(forgotPasswordFailureLimiter.recordFailure("1.2.3.4")).thenReturn(0);
-        when(forgotPasswordFailureLimiter.secondsLocked("1.2.3.4")).thenReturn(0L, 300L);
+        when(forgotPasswordFailureLimiter.secondsLocked("1.2.3.4")).thenReturn(0L, 60L);
 
         TooManyRequestsException ex = assertThrows(TooManyRequestsException.class,
                 () -> authService.forgotPassword(request("unknown@erp.com"), "1.2.3.4"));
 
-        assertEquals(300L, ex.getRetryAfterSeconds());
-        assertTrue(ex.getMessage().contains("5 phút"));
+        assertEquals(60L, ex.getRetryAfterSeconds());
+        assertTrue(ex.getMessage().contains("1 phút"));
         verify(emailService, never()).sendPasswordResetEmail(anyString(), anyString());
     }
 

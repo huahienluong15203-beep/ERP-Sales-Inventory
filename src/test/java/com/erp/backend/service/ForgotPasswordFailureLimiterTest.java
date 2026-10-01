@@ -51,18 +51,18 @@ class ForgotPasswordFailureLimiterTest {
     }
 
     @Test
-    @DisplayName("Sai lần thứ 5 -> khoá đúng 5 phút, hết 5 phút thì nhập lại được từ đầu")
-    void fifthFailure_locksFiveMinutes() {
+    @DisplayName("Sai lần thứ 5 -> khoá đúng 1 phút, hết 1 phút thì nhập lại được từ đầu")
+    void fifthFailure_locksOneMinute() {
         for (int i = 0; i < 4; i++) {
             limiter.recordFailure("ip");
         }
         assertThat(limiter.recordFailure("ip")).isZero();
-        assertThat(limiter.secondsLocked("ip")).isEqualTo(300);
+        assertThat(limiter.secondsLocked("ip")).isEqualTo(60);
 
-        clock.advance(Duration.ofMinutes(2));
-        assertThat(limiter.secondsLocked("ip")).isEqualTo(180);
+        clock.advance(Duration.ofSeconds(20));
+        assertThat(limiter.secondsLocked("ip")).isEqualTo(40);
 
-        clock.advance(Duration.ofMinutes(3));
+        clock.advance(Duration.ofSeconds(40));
         assertThat(limiter.secondsLocked("ip")).isZero();
         assertThat(limiter.recordFailure("ip")).isEqualTo(4); // đếm lại từ đầu
     }

@@ -86,7 +86,8 @@ public class Customer {
     private Integer maxDebtDays = 30;
 
     // S3-07: Khóa giao dịch đại lý (chặn tạo đơn mới trên mọi nền tảng khi có rủi ro công nợ).
-    @Column(name = "transaction_locked", nullable = false)
+    // columnDefinition có DEFAULT để ddl-auto=update thêm cột được trên bảng đã có dữ liệu
+    @Column(name = "transaction_locked", nullable = false, columnDefinition = "boolean default false")
     @Builder.Default
     private Boolean transactionLocked = false;
 

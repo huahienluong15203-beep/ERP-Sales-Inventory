@@ -72,16 +72,13 @@ class ForgotPasswordRateLimiterTest {
     }
 
     @Test
-    @DisplayName("Tối đa 5 lần/giờ -> lần thứ 6 phải đợi đến khi lượt đầu tiên quá 1 giờ")
-    void maxFivePerHour() {
-        for (int i = 0; i < 5; i++) {
+    @DisplayName("Gửi lại nhiều lần liên tục -> mỗi lần chỉ phải đợi tối đa 1 phút, không bị khoá lâu")
+    void manySends_onlyOneMinuteEachTime() {
+        for (int i = 0; i < 10; i++) {
+            assertThat(limiter.secondsUntilAllowed("a@erp.com")).isZero();
             limiter.recordSent("a@erp.com");
-            clock.advance(Duration.ofMinutes(2)); // mỗi lần cách nhau 2 phút (> 60 giây)
+            assertThat(limiter.secondsUntilAllowed("a@erp.com")).isEqualTo(60);
+            clock.advance(Duration.ofSeconds(60));
         }
-        // Đã 10 phút kể từ lượt đầu -> còn 50 phút nữa mới đủ 1 giờ
-        assertThat(limiter.secondsUntilAllowed("a@erp.com")).isEqualTo(50 * 60);
-
-        clock.advance(Duration.ofMinutes(50));
-        assertThat(limiter.secondsUntilAllowed("a@erp.com")).isZero();
     }
 }

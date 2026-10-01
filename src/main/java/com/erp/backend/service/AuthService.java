@@ -139,9 +139,9 @@ public class AuthService {
     // 8. TÍNH NĂNG QUÊN MẬT KHẨU (Gửi mail kèm link 30 phút)
     //    Thứ tự kiểm tra:
     //    (1) Email bắt buộc nhập  (2) Đúng định dạng
-    //    (3) Chống dò email: nhập email chưa đăng ký sai 5 lần -> khoá 5 phút (theo từng máy)
+    //    (3) Chống dò email: nhập email chưa đăng ký sai 5 lần -> khoá 1 phút (theo từng máy)
     //    (4) Có tồn tại trong hệ thống
-    //    (5) Chống spam: cách nhau >= 60 giây, tối đa 5 lần/giờ  (6) Gửi mail CHẠY NGẦM
+    //    (5) Chống spam: 2 lần gửi cách nhau >= 1 phút  (6) Gửi mail CHẠY NGẦM
     @Transactional
     public String forgotPassword(ForgotPasswordRequest request) {
         return forgotPassword(request, null);
