@@ -88,6 +88,41 @@ public class CustomerController {
         return customerService.changeStatus(id, request, actor);
     }
 
+    // ======================= S3-05: HẠN MỨC CÔNG NỢ & SỐ NGÀY NỢ =======================
+
+    /**
+     * S3-05: Thiết lập hạn mức tiền tối đa và số ngày nợ tối đa (bắt buộc nhập lý do khi thay đổi để ghi nhật ký).
+     */
+    @PutMapping("/{id}/debt-limit")
+    @PreAuthorize("hasAnyRole('ADMIN', 'SALES_MANAGER', 'ACCOUNTANT')")
+    public CustomerResponse updateDebtLimit(@PathVariable Long id,
+                                           @Valid @RequestBody UpdateDebtLimitRequest request,
+                                           @AuthenticationPrincipal UserDetailsImpl actor) {
+        return customerService.updateDebtLimit(id, request, actor);
+    }
+
+    // ======================= S3-07: KHÓA / MỞ GIAO DỊCH ĐẠI LÝ =======================
+
+    /**
+     * S3-07: Khóa hoặc mở giao dịch với một đại lý (bắt buộc nhập lý do) để chặn tạo đơn mới trên mọi nền tảng.
+     */
+    @PatchMapping("/{id}/transaction-lock")
+    @PreAuthorize("hasAnyRole('ADMIN', 'SALES_MANAGER', 'ACCOUNTANT')")
+    public CustomerResponse setTransactionLock(@PathVariable Long id,
+                                               @Valid @RequestBody CustomerTransactionLockRequest request,
+                                               @AuthenticationPrincipal UserDetailsImpl actor) {
+        return customerService.setTransactionLock(id, request, actor);
+    }
+
+    /**
+     * S3-07 & S4-02: Kiểm tra điều kiện tạo đơn mới của đại lý.
+     * Cho phép các nền tảng bán hàng kiểm tra trước khi tạo đơn.
+     */
+    @GetMapping("/{id}/check-order-creation")
+    public OrderCreationCheckResponse checkOrderCreation(@PathVariable Long id) {
+        return customerService.checkOrderCreation(id);
+    }
+
     // ======================= S3-04: ĐIỂM GIAO HÀNG =======================
 
     @GetMapping("/{id}/delivery-addresses")
