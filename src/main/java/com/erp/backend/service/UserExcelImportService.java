@@ -92,12 +92,12 @@ public class UserExcelImportService {
                 cell.setCellStyle(headerStyle);
             }
 
-            // Dữ liệu mẫu
+            // Dữ liệu mẫu (sử dụng tài khoản mới chưa seed, và có dòng để trống số điện thoại làm mẫu)
             Object[][] sampleData = {
-                    {1, "sales_hanoi01", "Nguyễn Văn Toàn", "toan.nv@erp.com", "0912345678", "ROLE_SALES_REP", "", "MB"},
-                    {2, "wh_staff_hn01", "Trần Văn Kho", "kho.tv@erp.com", "0987654321", "ROLE_WAREHOUSE", "WH-MB01", "MB"},
-                    {3, "sales_sg01", "Lê Thị Mai", "mai.lt@erp.com", "0903123456", "ROLE_SALES_REP", "", "MN"},
-                    {4, "acc_central01", "Phạm Thu Hương", "huong.pt@erp.com", "0934567890", "ROLE_ACCOUNTANT", "", ""}
+                    {1, "sales_north_01", "Phan Văn Nam", "nam.pv@erp.com", "0981112233", "ROLE_SALES_REP", "", "MB"},
+                    {2, "sales_north_02", "Lê Thị Bích", "bich.lt@erp.com", "", "ROLE_SALES_REP", "", "MB"},
+                    {3, "wh_staff_dn01", "Trần Đình Trọng", "trong.td@erp.com", "0982223344", "ROLE_WAREHOUSE", "WH-MT01", "MT"},
+                    {4, "acc_south_01", "Hoàng Kim Oanh", "oanh.hk@erp.com", "", "ROLE_ACCOUNTANT", "", ""}
             };
 
             for (int r = 0; r < sampleData.length; r++) {
@@ -129,7 +129,7 @@ public class UserExcelImportService {
                     "1. Các cột có dấu (*) là bắt buộc phải nhập dữ liệu.",
                     "2. Tên đăng nhập: Từ 3 - 50 ký tự, viết liền không dấu, chỉ gồm chữ cái, số, dấu chấm (.) hoặc gạch ngang/dưới.",
                     "3. Email: Phải đúng định dạng chuẩn (vd: ten@domain.com) và chưa từng được sử dụng trong hệ thống.",
-                    "4. Số điện thoại: 10 chữ số, đúng chuẩn di động Việt Nam (đầu 03, 05, 07, 08, 09).",
+                    "4. Số điện thoại: Tùy chọn (cho phép để trống để nhân viên tự cập nhật sau trong Hồ sơ cá nhân). Nếu nhập thì phải đủ 10 số (đầu 03, 05, 07, 08, 09) và không trùng với tài khoản khác.",
                     "5. Mã vai trò hợp lệ (nhiều vai trò thì cách nhau bằng dấu phẩy):",
                     "   - ROLE_ADMIN: Quản trị hệ thống",
                     "   - ROLE_SALES_MANAGER: Quản lý kinh doanh",
