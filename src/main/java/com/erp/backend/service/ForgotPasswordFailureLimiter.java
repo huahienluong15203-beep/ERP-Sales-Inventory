@@ -12,7 +12,7 @@ import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Chống dò email ở màn "Quên mật khẩu", tính theo từng máy (địa chỉ IP):
- * nhập email CHƯA ĐĂNG KÝ sai 5 lần -> khoá tạm 5 phút.
+ * nhập email CHƯA ĐĂNG KÝ sai 5 lần -> khoá tạm 1 phút.
  * Nhập đúng email (gửi mail thành công) thì đếm lại từ đầu.
  *
  * Lưu trong bộ nhớ (reset khi khởi động lại server) - đủ dùng cho quy mô dự án.
@@ -33,13 +33,13 @@ public class ForgotPasswordFailureLimiter {
     @Autowired
     public ForgotPasswordFailureLimiter(
             @Value("${erp.app.forgot-password.max-wrong-attempts:5}") int maxFailures,
-            @Value("${erp.app.forgot-password.lock-seconds:300}") long lockSeconds) {
+            @Value("${erp.app.forgot-password.lock-seconds:60}") long lockSeconds) {
         this(Clock.systemUTC(), maxFailures, lockSeconds);
     }
 
-    /** Dùng trong test: mặc định sai 5 lần khoá 5 phút. */
+    /** Dùng trong test: mặc định sai 5 lần khoá 1 phút. */
     ForgotPasswordFailureLimiter(Clock clock) {
-        this(clock, 5, 300);
+        this(clock, 5, 60);
     }
 
     ForgotPasswordFailureLimiter(Clock clock, int maxFailures, long lockSeconds) {
