@@ -1,0 +1,249 @@
+package com.erp.backend.service;
+
+import com.erp.backend.dto.product.ProductImportPreviewResponse;
+import com.erp.backend.dto.product.ProductImportRowDto;
+import com.erp.backend.dto.product.ProductImportSummaryResponse;
+import com.erp.backend.entity.Product;
+import com.erp.backend.exception.BusinessException;
+import com.erp.backend.repository.ProductRepository;
+import org.apache.poi.ss.usermodel.Row;
+import org.apache.poi.ss.usermodel.Sheet;
+import org.apache.poi.ss.usermodel.Workbook;
+import org.apache.poi.ss.usermodel.WorkbookFactory;
+import org.apache.poi.xssf.usermodel.XSSFWorkbook;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.mock.web.MockMultipartFile;
+
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.math.BigDecimal;
+import java.util.*;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyCollection;
+import static org.mockito.Mockito.*;
+
+@ExtendWith(MockitoExtension.class)
+@DisplayName("Unit test ProductExcelImportService - S2-08 Nhập danh mục sản phẩm từ Excel")
+class ProductExcelImportServiceTest {
+
+    @Mock
+    private ProductRepository productRepository;
+
+    @InjectMocks
+    private ProductExcelImportService productExcelImportService;
+
+    private byte[] createTestExcelBytes(List<List<Object>> dataRows) throws IOException {
+        try (Workbook wb = new XSSFWorkbook(); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+            Sheet sheet = wb.createSheet("DanhMucSanPham");
+            Row header = sheet.createRow(0);
+            String[] headers = {
+                    "STT", "Mã SKU (*)", "Tên sản phẩm (*)", "Đơn vị tính cơ sở (*)",
+                    "Nhóm hàng", "Quy cách đóng gói", "Giá vốn (VNĐ)",
+                    "Mã vạch (Barcode)", "Trạng thái", "Mô tả"
+            };
+            for (int i = 0; i < headers.length; i++) {
+                header.createCell(i).setCellValue(headers[i]);
+            }
+
+            for (int r = 0; r < dataRows.size(); r++) {
+                Row row = sheet.createRow(r + 1);
+                List<Object> cells = dataRows.get(r);
+                for (int c = 0; c < cells.size(); c++) {
+                    Object val = cells.get(c);
+                    if (val instanceof Number) {
+                        row.createCell(c).setCellValue(((Number) val).doubleValue());
+                    } else if (val != null) {
+                        row.createCell(c).setCellValue(val.toString());
+                    } else {
+                        row.createCell(c).setCellValue("");
+                    }
+                }
+            }
+
+            wb.write(out);
+            return out.toByteArray();
+        }
+    }
+
+    @Test
+    @DisplayName("S2-08 AC1: Tạo tệp mẫu Excel chuẩn có đủ 2 sheet và hướng dẫn")
+    void generateTemplate_Success() throws IOException {
+        byte[] bytes = productExcelImportService.generateTemplate();
+
+        assertThat(bytes).isNotNull();
+        assertThat(bytes.length).isGreaterThan(0);
+
+        try (Workbook wb = WorkbookFactory.create(new ByteArrayInputStream(bytes))) {
+            assertThat(wb.getNumberOfSheets()).isEqualTo(2);
+            assertThat(wb.getSheetName(0)).isEqualTo("DanhMucSanPham");
+            assertThat(wb.getSheetName(1)).isEqualTo("HuongDan_QuyDinh");
+
+            Sheet sheet1 = wb.getSheetAt(0);
+            Row header = sheet1.getRow(0);
+            assertThat(header.getCell(1).getStringCellValue()).contains("Mã SKU");
+            assertThat(header.getCell(2).getStringCellValue()).contains("Tên sản phẩm");
+            assertThat(header.getCell(3).getStringCellValue()).contains("Đơn vị tính cơ sở");
+        }
+    }
+
+    @Test
+    @DisplayName("S2-08 AC2: Xem trước và phân loại chính xác CREATE cho SKU mới và UPDATE cho SKU đã có")
+    void previewImport_MarksCreateAndUpdateAccurately() throws IOException {
+        List<List<Object>> rows = List.of(
+                List.of(1, "SP-OLD-01", "Sản phẩm cũ", "Lon", "Nước ngọt", "Thùng 24 lon", 200000, "1111", "ACTIVE", "Cũ"),
+                List.of(2, "SP-NEW-02", "Sản phẩm mới", "Chai", "Bia", "Lốc 6 chai", 150000, "2222", "ACTIVE", "Mới")
+        );
+
+        byte[] excelBytes = createTestExcelBytes(rows);
+        MockMultipartFile file = new MockMultipartFile("file", "san_pham.xlsx",
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", excelBytes);
+
+        // Giả lập SKU 'SP-OLD-01' đã tồn tại trong DB
+        when(productRepository.findExistingSkus(anyCollection())).thenReturn(Set.of("SP-OLD-01"));
+
+        ProductImportPreviewResponse response = productExcelImportService.previewImport(file);
+
+        assertThat(response).isNotNull();
+        assertThat(response.getTotalRows()).isEqualTo(2);
+        assertThat(response.getValidRows()).isEqualTo(2);
+        assertThat(response.getInvalidRows()).isEqualTo(0);
+        assertThat(response.getUpdateCount()).isEqualTo(1);
+        assertThat(response.getCreateCount()).isEqualTo(1);
+
+        ProductImportRowDto oldRow = response.getRows().get(0);
+        assertThat(oldRow.getSku()).isEqualTo("SP-OLD-01");
+        assertThat(oldRow.getAction()).isEqualTo("UPDATE");
+        assertThat(oldRow.isUpdate()).isTrue();
+        assertThat(oldRow.isValid()).isTrue();
+
+        ProductImportRowDto newRow = response.getRows().get(1);
+        assertThat(newRow.getSku()).isEqualTo("SP-NEW-02");
+        assertThat(newRow.getAction()).isEqualTo("CREATE");
+        assertThat(newRow.isUpdate()).isFalse();
+        assertThat(newRow.isValid()).isTrue();
+    }
+
+    @Test
+    @DisplayName("S2-08 AC1: Xem trước báo lỗi chi tiết theo từng dòng khi dữ liệu sai quy chuẩn")
+    void previewImport_ReportsErrorsPerRow() throws IOException {
+        List<List<Object>> rows = List.of(
+                // Dòng 1: Thiếu SKU
+                List.of(1, "", "Sản phẩm A", "Lon", "Đồ uống", "", 100000, "", "ACTIVE", ""),
+                // Dòng 2: Thiếu Tên
+                List.of(2, "SP-002", "", "Chai", "Đồ uống", "", 100000, "", "ACTIVE", ""),
+                // Dòng 3: Thiếu Đơn vị tính cơ sở
+                List.of(3, "SP-003", "Sản phẩm C", "", "Đồ uống", "", 100000, "", "ACTIVE", ""),
+                // Dòng 4: Giá vốn âm
+                List.of(4, "SP-004", "Sản phẩm D", "Lon", "Đồ uống", "", -50000, "", "ACTIVE", ""),
+                // Dòng 5: Trạng thái không hợp lệ
+                List.of(5, "SP-005", "Sản phẩm E", "Lon", "Đồ uống", "", 50000, "", "PENDING", "")
+        );
+
+        byte[] excelBytes = createTestExcelBytes(rows);
+        MockMultipartFile file = new MockMultipartFile("file", "san_pham.xlsx",
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", excelBytes);
+
+        when(productRepository.findExistingSkus(anyCollection())).thenReturn(Set.of());
+
+        ProductImportPreviewResponse response = productExcelImportService.previewImport(file);
+
+        assertThat(response.getTotalRows()).isEqualTo(5);
+        assertThat(response.getValidRows()).isEqualTo(0);
+        assertThat(response.getInvalidRows()).isEqualTo(5);
+
+        assertThat(response.getRows().get(0).getErrors()).anyMatch(e -> e.contains("Mã SKU không được để trống"));
+        assertThat(response.getRows().get(1).getErrors()).anyMatch(e -> e.contains("Tên sản phẩm không được để trống"));
+        assertThat(response.getRows().get(2).getErrors()).anyMatch(e -> e.contains("Đơn vị tính cơ sở không được để trống"));
+        assertThat(response.getRows().get(3).getErrors()).anyMatch(e -> e.contains("Giá vốn không được là số âm"));
+        assertThat(response.getRows().get(4).getErrors()).anyMatch(e -> e.contains("Trạng thái"));
+    }
+
+    @Test
+    @DisplayName("S2-08 AC2: Thực thi nhập dữ liệu thành công - cập nhật sản phẩm cũ và thêm mới sản phẩm mới")
+    void executeImport_UpsertSuccess() throws IOException {
+        Product existingProduct = Product.builder()
+                .id(1L)
+                .sku("SP-COCA")
+                .name("Coca cũ")
+                .baseUnit("Lon")
+                .costPrice(BigDecimal.valueOf(180000))
+                .build();
+
+        List<List<Object>> rows = List.of(
+                List.of(1, "SP-COCA", "Coca-Cola Mới Cập Nhật", "Lon", "Nước ngọt", "Thùng 24", 210000, "893", "ACTIVE", "Cập nhật giá"),
+                List.of(2, "SP-PEPSI", "Pepsi Mới Toanh", "Chai", "Nước ngọt", "Lốc 6", 150000, "894", "ACTIVE", "Mới")
+        );
+
+        byte[] excelBytes = createTestExcelBytes(rows);
+        MockMultipartFile file = new MockMultipartFile("file", "import.xlsx",
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", excelBytes);
+
+        when(productRepository.findExistingSkus(anyCollection())).thenReturn(Set.of("SP-COCA"));
+        when(productRepository.findBySkuIn(anyCollection())).thenReturn(List.of(existingProduct));
+
+        ProductImportSummaryResponse summary = productExcelImportService.executeImport(file);
+
+        assertThat(summary).isNotNull();
+        assertThat(summary.getTotalRows()).isEqualTo(2);
+        assertThat(summary.getSuccessCount()).isEqualTo(2);
+        assertThat(summary.getUpdatedCount()).isEqualTo(1);
+        assertThat(summary.getCreatedCount()).isEqualTo(1);
+        assertThat(summary.getErrorCount()).isEqualTo(0);
+
+        // Kiểm tra đối tượng cũ đã được cập nhật giá trị mới
+        assertThat(existingProduct.getName()).isEqualTo("Coca-Cola Mới Cập Nhật");
+        assertThat(existingProduct.getCostPrice()).isEqualByComparingTo("210000");
+
+        verify(productRepository, atLeastOnce()).saveAll(anyList());
+    }
+
+    @Test
+    @DisplayName("S2-08: Thực thi bỏ qua dòng lỗi và nhập các dòng hợp lệ còn lại")
+    void executeImport_SkipsInvalidRows() throws IOException {
+        List<List<Object>> rows = List.of(
+                List.of(1, "SP-VALID", "Sản phẩm hợp lệ", "Lon", "Nhóm 1", "", 100000, "", "ACTIVE", ""),
+                List.of(2, "", "Sản phẩm lỗi thiếu SKU", "Lon", "Nhóm 1", "", 100000, "", "ACTIVE", "")
+        );
+
+        byte[] excelBytes = createTestExcelBytes(rows);
+        MockMultipartFile file = new MockMultipartFile("file", "import.xlsx",
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", excelBytes);
+
+        when(productRepository.findExistingSkus(anyCollection())).thenReturn(Set.of());
+        when(productRepository.findBySkuIn(anyCollection())).thenReturn(List.of());
+
+        ProductImportSummaryResponse summary = productExcelImportService.executeImport(file);
+
+        assertThat(summary.getTotalRows()).isEqualTo(2);
+        assertThat(summary.getSuccessCount()).isEqualTo(1);
+        assertThat(summary.getCreatedCount()).isEqualTo(1);
+        assertThat(summary.getUpdatedCount()).isEqualTo(0);
+        assertThat(summary.getErrorCount()).isEqualTo(1);
+        assertThat(summary.getErrorRows()).hasSize(1);
+        assertThat(summary.getErrorRows().get(0).getRowNumber()).isEqualTo(3); // dòng số 3 trên Excel
+    }
+
+    @Test
+    @DisplayName("S2-08: Báo lỗi khi tệp rỗng hoặc sai định dạng không phải .xlsx")
+    void validateFile_ThrowsWhenInvalid() {
+        MockMultipartFile emptyFile = new MockMultipartFile("file", "empty.xlsx", "text/plain", new byte[0]);
+        assertThatThrownBy(() -> productExcelImportService.previewImport(emptyFile))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("Vui lòng chọn tệp Excel");
+
+        MockMultipartFile wrongExtFile = new MockMultipartFile("file", "test.pdf", "application/pdf", new byte[]{1, 2, 3});
+        assertThatThrownBy(() -> productExcelImportService.previewImport(wrongExtFile))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("chỉ hỗ trợ tệp định dạng Excel");
+    }
+}
