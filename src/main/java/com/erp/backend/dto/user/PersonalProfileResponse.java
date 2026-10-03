@@ -36,6 +36,12 @@ public class PersonalProfileResponse {
     @Schema(description = "Số điện thoại liên hệ", example = "0988776655")
     private String phone;
 
+    @Schema(description = "Đường dẫn ảnh đại diện đầy đủ (S2-03)", example = "/uploads/avatars/avatar_1_1712345678.png")
+    private String avatarUrl;
+
+    @Schema(description = "Đường dẫn ảnh đại diện thu nhỏ (thumbnail S2-03)", example = "/uploads/avatars/avatar_1_1712345678_thumb.png")
+    private String avatarThumbnailUrl;
+
     @Schema(description = "Trạng thái tài khoản", example = "ACTIVE")
     private String status;
 

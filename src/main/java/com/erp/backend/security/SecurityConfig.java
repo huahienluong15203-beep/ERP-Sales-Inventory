@@ -96,11 +96,12 @@ public class SecurityConfig {
                         .requestMatchers("/error").permitAll()
                         // 2. Navigation context bắt buộc phải có Token phiên làm việc hợp lệ
                         .requestMatchers("/api/v1/navigation/**").authenticated()
-                        // 3. Mở cửa công khai cho toàn bộ giao diện Swagger UI
+                        // 3. Mở cửa công khai cho toàn bộ giao diện Swagger UI và ảnh avatar tĩnh
                         .requestMatchers(
                                 "/v3/api-docs/**",
                                 "/swagger-ui/**",
-                                "/swagger-ui.html")
+                                "/swagger-ui.html",
+                                "/uploads/**")
                         .permitAll()
                         // 4. Toàn bộ các API nghiệp vụ khác BẮT BUỘC phải có Token
                         .anyRequest().authenticated());

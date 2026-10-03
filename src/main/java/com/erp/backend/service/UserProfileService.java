@@ -1,5 +1,6 @@
 package com.erp.backend.service;
 
+import com.erp.backend.dto.user.AvatarUploadResponse;
 import com.erp.backend.dto.user.PersonalProfileResponse;
 import com.erp.backend.dto.user.RefItem;
 import com.erp.backend.dto.user.UpdatePersonalProfileRequest;
@@ -12,18 +13,20 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.Comparator;
 import java.util.List;
 
 /**
- * Service xử lý nghiệp vụ Hồ sơ cá nhân (S2-02).
+ * Service xử lý nghiệp vụ Hồ sơ cá nhân (S2-02, S2-03).
  */
 @Service
 @RequiredArgsConstructor
 public class UserProfileService {
 
     private final UserRepository userRepository;
+    private final AvatarStorageService avatarStorageService;
 
     private static final List<RoleName> ROLE_PRIORITY_ORDER = List.of(
             RoleName.ROLE_ADMIN,
@@ -63,6 +66,54 @@ public class UserProfileService {
         // Bảo mật bất biến: KHÔNG CHO PHÉP sửa username, email, roles, warehouses, regions
         User saved = userRepository.save(user);
         return toProfileResponse(saved);
+    }
+
+    /**
+     * S2-03: Tải lên và cập nhật ảnh đại diện người dùng.
+     * Hỗ trợ ảnh JPG/PNG tối đa 2MB, hỗ trợ cắt vuông (tự động căn giữa hoặc theo toạ độ)
+     * và tạo bản thu nhỏ (thumbnail).
+     */
+    @Transactional
+    public AvatarUploadResponse uploadAvatar(Long userId, MultipartFile file, Integer x, Integer y, Integer width, Integer height) {
+        User user = findUserById(userId);
+
+        // Lưu trữ avatar mới và tạo thumbnail
+        AvatarStorageService.AvatarResult result = avatarStorageService.processAndStoreAvatar(userId, file, x, y, width, height);
+
+        // Dọn dẹp tệp ảnh đại diện cũ nếu có
+        String oldAvatar = user.getAvatarUrl();
+        String oldThumb = user.getAvatarThumbnailUrl();
+        if (StringUtils.hasText(oldAvatar) || StringUtils.hasText(oldThumb)) {
+            avatarStorageService.deleteAvatarFiles(oldAvatar, oldThumb);
+        }
+
+        user.setAvatarUrl(result.avatarUrl());
+        user.setAvatarThumbnailUrl(result.avatarThumbnailUrl());
+        User saved = userRepository.save(user);
+
+        return AvatarUploadResponse.builder()
+                .message("Tải ảnh đại diện thành công")
+                .avatarUrl(result.avatarUrl())
+                .avatarThumbnailUrl(result.avatarThumbnailUrl())
+                .profile(toProfileResponse(saved))
+                .build();
+    }
+
+    /**
+     * S2-03: Xoá ảnh đại diện (trở về ảnh mặc định).
+     */
+    @Transactional
+    public PersonalProfileResponse removeAvatar(Long userId) {
+        User user = findUserById(userId);
+
+        if (StringUtils.hasText(user.getAvatarUrl()) || StringUtils.hasText(user.getAvatarThumbnailUrl())) {
+            avatarStorageService.deleteAvatarFiles(user.getAvatarUrl(), user.getAvatarThumbnailUrl());
+            user.setAvatarUrl(null);
+            user.setAvatarThumbnailUrl(null);
+            user = userRepository.save(user);
+        }
+
+        return toProfileResponse(user);
     }
 
     private User findUserById(Long userId) {
@@ -114,6 +165,8 @@ public class UserProfileService {
                 .fullName(u.getFullName())
                 .email(u.getEmail())
                 .phone(u.getPhone())
+                .avatarUrl(u.getAvatarUrl())
+                .avatarThumbnailUrl(u.getAvatarThumbnailUrl())
                 .status(u.getStatus())
                 .roles(sortedRoles)
                 .warehouses(warehouses)
