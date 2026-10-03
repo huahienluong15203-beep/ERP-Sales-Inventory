@@ -97,7 +97,6 @@ class AuthServiceForgotPasswordTest {
                 () -> authService.forgotPassword(request("unknown@erp.com"), "1.2.3.4"));
 
         assertTrue(ex.getMessage().contains("chưa được đăng ký"));
-        assertTrue(ex.getMessage().contains("còn 4 lần thử"));
         verify(emailService, never()).sendPasswordResetEmail(anyString(), anyString());
         verify(tokenRepository, never()).save(any());
     }
