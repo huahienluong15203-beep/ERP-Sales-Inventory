@@ -246,4 +246,52 @@ class ProductExcelImportServiceTest {
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("chỉ hỗ trợ tệp định dạng Excel");
     }
+
+    @Test
+    @DisplayName("S2-08: Thử nghiệm tải và nhập dữ liệu lớn 5.000 SKU sản phẩm mượt mà theo Batch")
+    void executeImport_5000Products_HandlesGracefully() throws IOException {
+        List<List<Object>> rows = new ArrayList<>(5000);
+        for (int i = 1; i <= 5000; i++) {
+            rows.add(List.of(
+                    i,
+                    "SKU-" + String.format("%05d", i),
+                    "Sản phẩm thử nghiệm số " + i,
+                    "Hộp",
+                    "Đồ tiêu dùng",
+                    "Thùng 12 hộp",
+                    100000 + i * 10,
+                    "8930000" + String.format("%05d", i),
+                    "ACTIVE",
+                    "Ghi chú " + i
+            ));
+        }
+
+        byte[] excelBytes = createTestExcelBytes(rows);
+        MockMultipartFile file = new MockMultipartFile("file", "5000_products.xlsx",
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", excelBytes);
+
+        // 1.000 SKU đầu tiên đã tồn tại trong DB, 4.000 SKU còn lại là mới
+        Set<String> existingSkus = new HashSet<>();
+        List<Product> existingProducts = new ArrayList<>();
+        for (int i = 1; i <= 1000; i++) {
+            String sku = "SKU-" + String.format("%05d", i);
+            existingSkus.add(sku);
+            existingProducts.add(Product.builder().sku(sku).name("Old " + i).baseUnit("Hộp").build());
+        }
+
+        when(productRepository.findExistingSkus(anyCollection())).thenReturn(existingSkus);
+        when(productRepository.findBySkuIn(anyCollection())).thenReturn(existingProducts);
+
+        ProductImportSummaryResponse summary = productExcelImportService.executeImport(file);
+
+        assertThat(summary).isNotNull();
+        assertThat(summary.getTotalRows()).isEqualTo(5000);
+        assertThat(summary.getSuccessCount()).isEqualTo(5000);
+        assertThat(summary.getUpdatedCount()).isEqualTo(1000);
+        assertThat(summary.getCreatedCount()).isEqualTo(4000);
+        assertThat(summary.getErrorCount()).isEqualTo(0);
+
+        // 5000 sản phẩm lưu theo batch 500 -> gọi saveAll chính xác 10 lần
+        verify(productRepository, times(10)).saveAll(anyList());
+    }
 }
