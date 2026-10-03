@@ -35,8 +35,8 @@ public class AuthService {
     private final ForgotPasswordFailureLimiter forgotPasswordFailureLimiter;
 
     /** Định dạng email hợp lệ: ten@tenmien.duoi (vd: nguyenvana@gmail.com). */
-    private static final Pattern EMAIL_PATTERN =
-            Pattern.compile("^[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(\\.[A-Za-z0-9-]+)*\\.[A-Za-z]{2,}$");
+    private static final Pattern EMAIL_PATTERN = Pattern
+            .compile("^[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(\\.[A-Za-z0-9-]+)*\\.[A-Za-z]{2,}$");
 
     @Value("${erp.app.resetPasswordExpirationMs:1800000}")
     private long resetTokenExpirationMs;
@@ -100,15 +100,16 @@ public class AuthService {
         // ROLE_ADMIN → ROLE_SALES_MANAGER → ROLE_WH_MANAGER → ROLE_ACCOUNTANT → ...
         List<String> roleOrder = List.of(
                 "ROLE_ADMIN", "ROLE_SALES_MANAGER", "ROLE_WH_MANAGER",
-                "ROLE_ACCOUNTANT", "ROLE_WAREHOUSE", "ROLE_SALES_REP", "ROLE_CUSTOMER"
-        );
+                "ROLE_ACCOUNTANT", "ROLE_WAREHOUSE", "ROLE_SALES_REP", "ROLE_CUSTOMER");
         List<String> roles = user.getRoles().stream()
                 .map(role -> role.getName().name())
                 .sorted((a, b) -> {
                     int ia = roleOrder.indexOf(a);
                     int ib = roleOrder.indexOf(b);
-                    if (ia < 0) ia = roleOrder.size();
-                    if (ib < 0) ib = roleOrder.size();
+                    if (ia < 0)
+                        ia = roleOrder.size();
+                    if (ib < 0)
+                        ib = roleOrder.size();
                     return ia - ib;
                 })
                 .toList();
@@ -137,18 +138,20 @@ public class AuthService {
     }
 
     // 8. TÍNH NĂNG QUÊN MẬT KHẨU (Gửi mail kèm link 30 phút)
-    //    Thứ tự kiểm tra:
-    //    (1) Email bắt buộc nhập  (2) Đúng định dạng
-    //    (3) Chống dò email: nhập email chưa đăng ký sai 5 lần -> khoá 1 phút (theo từng máy)
-    //    (4) Có tồn tại trong hệ thống
-    //    (5) Chống spam: 2 lần gửi cách nhau >= 1 phút  (6) Gửi mail CHẠY NGẦM
+    // Thứ tự kiểm tra:
+    // (1) Email bắt buộc nhập (2) Đúng định dạng
+    // (3) Chống dò email: nhập email chưa đăng ký sai 5 lần -> khoá 1 phút (theo
+    // từng máy)
+    // (4) Có tồn tại trong hệ thống
+    // (5) Chống spam: 2 lần gửi cách nhau >= 1 phút (6) Gửi mail CHẠY NGẦM
     @Transactional
     public String forgotPassword(ForgotPasswordRequest request) {
         return forgotPassword(request, null);
     }
 
     /**
-     * @param clientKey định danh máy gửi yêu cầu (địa chỉ IP) - dùng để khoá khi nhập sai quá nhiều.
+     * @param clientKey định danh máy gửi yêu cầu (địa chỉ IP) - dùng để khoá khi
+     *                  nhập sai quá nhiều.
      */
     @Transactional
     public String forgotPassword(ForgotPasswordRequest request, String clientKey) {
@@ -161,7 +164,8 @@ public class AuthService {
 
         // (2) Kiểm tra định dạng
         if (!EMAIL_PATTERN.matcher(email).matches()) {
-            throw new RuntimeException("Email không đúng định dạng (ví dụ đúng: nguyenvana@gmail.com). Vui lòng kiểm tra lại!");
+            throw new RuntimeException(
+                    "Email không đúng định dạng (ví dụ đúng: nguyenvana@gmail.com). Vui lòng kiểm tra lại!");
         }
 
         // (3) Đang bị khoá do nhập sai quá nhiều lần?
@@ -183,7 +187,7 @@ public class AuthService {
                         lock);
             }
             throw new RuntimeException("Email '" + email + "' chưa được đăng ký trong hệ thống. "
-                    + "Vui lòng kiểm tra lại (còn " + remaining + " lần thử).");
+                    + "Vui lòng kiểm tra lại.");
         }
         forgotPasswordFailureLimiter.reset(clientKey);
 
@@ -213,7 +217,8 @@ public class AuthService {
         tokenRepository.save(resetToken);
         forgotPasswordRateLimiter.recordSent(email);
 
-        // (6) Gửi email CHẠY NGẦM, sau khi token đã lưu DB thành công -> API trả kết quả ngay
+        // (6) Gửi email CHẠY NGẦM, sau khi token đã lưu DB thành công -> API trả kết
+        // quả ngay
         String toEmail = user.getEmail();
         String resetLink = resetPasswordUrl + "?token=" + token;
         AfterCommit.run(() -> emailService.sendPasswordResetEmail(toEmail, resetLink));
@@ -319,7 +324,7 @@ public class AuthService {
         user.setPassword(passwordEncoder.encode(newPassword));
         user.setMustChangePassword(false);
         // S1-04: Ghi nhận thời điểm đổi mật khẩu -> JwtAuthenticationFilter sẽ thu hồi
-        //        mọi token cũ (phiên đăng nhập khác) được cấp trước thời điểm này
+        // mọi token cũ (phiên đăng nhập khác) được cấp trước thời điểm này
         user.setPasswordChangedAt(LocalDateTime.now());
         userRepository.save(user);
 
@@ -327,4 +332,3 @@ public class AuthService {
 
     }
 }
-
