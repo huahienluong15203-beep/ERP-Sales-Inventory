@@ -43,6 +43,11 @@ public class Product {
     @Column(length = 100)
     private String category;
 
+    // S2-06: Nhóm hàng trong cây nhóm hàng nhiều cấp (khi chuyển nhóm, ô category ở trên được cập nhật theo tên nhóm)
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "category_id")
+    private ProductCategory productCategory;
+
     // Đơn vị tính cơ sở (Bắt buộc: vd: Lon, Chai, Hộp, Gói, Cái, Kg...)
     @Column(name = "base_unit", nullable = false, length = 30)
     private String baseUnit;

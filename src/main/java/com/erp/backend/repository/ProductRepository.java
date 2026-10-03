@@ -28,6 +28,18 @@ public interface ProductRepository extends JpaRepository<Product, Long> {
     @Query("SELECT p.sku FROM Product p WHERE p.sku IN :skus")
     Set<String> findExistingSkus(@Param("skus") Collection<String> skus);
 
+    // ======================= S2-06: NHÓM HÀNG =======================
+
+    boolean existsByProductCategory_Id(Long categoryId);
+
+    List<Product> findByProductCategory_Id(Long categoryId);
+
+    Page<Product> findByProductCategory_IdIn(Collection<Long> categoryIds, Pageable pageable);
+
+    /** Số sản phẩm trực tiếp của từng nhóm: mỗi dòng gồm [id nhóm, số sản phẩm]. */
+    @Query("SELECT p.productCategory.id, COUNT(p) FROM Product p WHERE p.productCategory IS NOT NULL GROUP BY p.productCategory.id")
+    List<Object[]> countByCategory();
+
     Page<Product> findByNameContainingIgnoreCaseOrSkuContainingIgnoreCase(String name, String sku, Pageable pageable);
 
     @Query("SELECT DISTINCT p FROM Product p LEFT JOIN FETCH p.unitConversions WHERE p.id = :id")
