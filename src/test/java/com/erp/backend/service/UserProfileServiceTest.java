@@ -1,5 +1,6 @@
 package com.erp.backend.service;
 
+import com.erp.backend.dto.user.AvatarUploadResponse;
 import com.erp.backend.dto.user.PersonalProfileResponse;
 import com.erp.backend.dto.user.UpdatePersonalProfileRequest;
 import com.erp.backend.entity.Role;
@@ -15,6 +16,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.mock.web.MockMultipartFile;
 
 import java.util.Optional;
 import java.util.Set;
@@ -25,11 +27,14 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
-@DisplayName("Unit test UserProfileService - S2-02 Cập nhật hồ sơ cá nhân")
+@DisplayName("Unit test UserProfileService - S2-02, S2-03 Hồ sơ cá nhân & Ảnh đại diện")
 class UserProfileServiceTest {
 
     @Mock
     private UserRepository userRepository;
+
+    @Mock
+    private AvatarStorageService avatarStorageService;
 
     @InjectMocks
     private UserProfileService userProfileService;
@@ -124,5 +129,45 @@ class UserProfileServiceTest {
                 .hasMessageContaining("Số điện thoại '0988888888' đã được sử dụng");
 
         verify(userRepository, never()).save(any(User.class));
+    }
+
+    @Test
+    @DisplayName("S2-03: Tải lên avatar thành công và xoá avatar cũ nếu đã tồn tại")
+    void uploadAvatar_Success() {
+        sampleUser.setAvatarUrl("/uploads/avatars/old_avatar.png");
+        sampleUser.setAvatarThumbnailUrl("/uploads/avatars/old_avatar_thumb.png");
+        when(userRepository.findById(100L)).thenReturn(Optional.of(sampleUser));
+
+        MockMultipartFile file = new MockMultipartFile("file", "avatar.png", "image/png", new byte[]{1, 2, 3});
+        when(avatarStorageService.processAndStoreAvatar(100L, file, null, null, null, null))
+                .thenReturn(new AvatarStorageService.AvatarResult("/uploads/avatars/new.png", "/uploads/avatars/new_thumb.png"));
+
+        AvatarUploadResponse res = userProfileService.uploadAvatar(100L, file, null, null, null, null);
+
+        assertThat(res).isNotNull();
+        assertThat(res.getAvatarUrl()).isEqualTo("/uploads/avatars/new.png");
+        assertThat(res.getAvatarThumbnailUrl()).isEqualTo("/uploads/avatars/new_thumb.png");
+        assertThat(res.getProfile().getAvatarUrl()).isEqualTo("/uploads/avatars/new.png");
+
+        // Xác nhận đã xoá avatar cũ
+        verify(avatarStorageService).deleteAvatarFiles("/uploads/avatars/old_avatar.png", "/uploads/avatars/old_avatar_thumb.png");
+        verify(userRepository).save(sampleUser);
+    }
+
+    @Test
+    @DisplayName("S2-03: Xoá avatar hiện tại trở về mặc định")
+    void removeAvatar_Success() {
+        sampleUser.setAvatarUrl("/uploads/avatars/my_avatar.png");
+        sampleUser.setAvatarThumbnailUrl("/uploads/avatars/my_avatar_thumb.png");
+        when(userRepository.findById(100L)).thenReturn(Optional.of(sampleUser));
+
+        PersonalProfileResponse res = userProfileService.removeAvatar(100L);
+
+        assertThat(res).isNotNull();
+        assertThat(res.getAvatarUrl()).isNull();
+        assertThat(res.getAvatarThumbnailUrl()).isNull();
+
+        verify(avatarStorageService).deleteAvatarFiles("/uploads/avatars/my_avatar.png", "/uploads/avatars/my_avatar_thumb.png");
+        verify(userRepository).save(sampleUser);
     }
 }

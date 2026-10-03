@@ -31,4 +31,10 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                 .body(ApiError.of("VALIDATION_ERROR", "Dữ liệu không hợp lệ", details));
     }
+
+    @ExceptionHandler(org.springframework.web.multipart.MaxUploadSizeExceededException.class)
+    public ResponseEntity<ApiError> handleMaxUploadSize(org.springframework.web.multipart.MaxUploadSizeExceededException ex) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(ApiError.of("FILE_SIZE_EXCEEDED", "Dung lượng tệp tải lên vượt quá giới hạn cho phép (tối đa 2MB).", Map.of("file", "Dung lượng tối đa là 2MB")));
+    }
 }
