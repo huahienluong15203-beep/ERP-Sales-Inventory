@@ -7,6 +7,8 @@ import org.hibernate.annotations.UpdateTimestamp;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * Thực thể Sản phẩm (Product) phục vụ EP-02 (S2-05, S2-08...).
@@ -78,4 +80,24 @@ public class Product {
     @UpdateTimestamp
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
+
+    // Danh sách các đơn vị quy đổi (S2-07)
+    @OneToMany(mappedBy = "product", cascade = CascadeType.ALL, orphanRemoval = true)
+    @Builder.Default
+    private List<ProductUnitConversion> unitConversions = new ArrayList<>();
+
+    public void addUnitConversion(ProductUnitConversion conversion) {
+        if (unitConversions == null) {
+            unitConversions = new ArrayList<>();
+        }
+        unitConversions.add(conversion);
+        conversion.setProduct(this);
+    }
+
+    public void removeUnitConversion(ProductUnitConversion conversion) {
+        if (unitConversions != null) {
+            unitConversions.remove(conversion);
+            conversion.setProduct(null);
+        }
+    }
 }

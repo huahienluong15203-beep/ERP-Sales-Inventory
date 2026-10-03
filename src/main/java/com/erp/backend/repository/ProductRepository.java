@@ -29,4 +29,19 @@ public interface ProductRepository extends JpaRepository<Product, Long> {
     Set<String> findExistingSkus(@Param("skus") Collection<String> skus);
 
     Page<Product> findByNameContainingIgnoreCaseOrSkuContainingIgnoreCase(String name, String sku, Pageable pageable);
+
+    @Query("SELECT DISTINCT p FROM Product p LEFT JOIN FETCH p.unitConversions WHERE p.id = :id")
+    Optional<Product> findByIdWithConversions(@Param("id") Long id);
+
+    @Query("SELECT DISTINCT p FROM Product p LEFT JOIN FETCH p.unitConversions WHERE LOWER(p.sku) = LOWER(:sku)")
+    Optional<Product> findBySkuWithConversions(@Param("sku") String sku);
+
+    @Query("SELECT p FROM Product p WHERE " +
+            "(:keyword IS NULL OR :keyword = '' OR LOWER(p.name) LIKE LOWER(CONCAT('%', :keyword, '%')) OR LOWER(p.sku) LIKE LOWER(CONCAT('%', :keyword, '%'))) " +
+            "AND (:category IS NULL OR :category = '' OR p.category = :category) " +
+            "AND (:status IS NULL OR :status = '' OR p.status = :status)")
+    Page<Product> searchProducts(@Param("keyword") String keyword,
+                                 @Param("category") String category,
+                                 @Param("status") String status,
+                                 Pageable pageable);
 }
