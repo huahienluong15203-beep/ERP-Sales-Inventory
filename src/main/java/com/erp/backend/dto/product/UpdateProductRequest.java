@@ -29,6 +29,9 @@ public class UpdateProductRequest {
     @Schema(description = "Nhóm hàng / Ngành hàng", example = "Nước giải khát có gas")
     private String category;
 
+    @Schema(description = "S2-06: id nhóm hàng trong cây nhóm hàng. Có giá trị thì ô category tự lấy theo tên nhóm", example = "3")
+    private Long categoryId;
+
     @NotBlank(message = "Đơn vị tính cơ sở không được để trống")
     @Size(max = 30, message = "Đơn vị tính cơ sở tối đa 30 ký tự")
     @Schema(description = "Đơn vị tính cơ sở (vd: Lon, Chai, Hộp...)", example = "Lon")

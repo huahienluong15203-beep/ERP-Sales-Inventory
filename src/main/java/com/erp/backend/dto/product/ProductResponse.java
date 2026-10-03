@@ -21,6 +21,9 @@ public class ProductResponse {
     private String sku;
     private String name;
     private String category;
+
+    // S2-06: id nhóm hàng trong cây (null nếu chưa gắn vào cây)
+    private Long categoryId;
     private String baseUnit;
     private String packaging;
     private BigDecimal costPrice;

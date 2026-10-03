@@ -4,8 +4,10 @@ import com.erp.backend.dto.product.*;
 import com.erp.backend.dto.user.PageResponse;
 import com.erp.backend.entity.AuditModule;
 import com.erp.backend.entity.Product;
+import com.erp.backend.entity.ProductCategory;
 import com.erp.backend.entity.ProductUnitConversion;
 import com.erp.backend.exception.BusinessException;
+import com.erp.backend.repository.ProductCategoryRepository;
 import com.erp.backend.repository.ProductRepository;
 import com.erp.backend.repository.ProductUnitConversionRepository;
 import com.erp.backend.security.UserDetailsImpl;
@@ -13,6 +15,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -38,6 +41,7 @@ public class ProductService {
     private final ProductUnitConversionRepository unitConversionRepository;
     private final ProductUnitConversionService unitConversionService;
     private final AuditLogService auditLogService;
+    private final ProductCategoryRepository productCategoryRepository;
 
     /**
      * S2-05 & S2-07: Khai báo sản phẩm mới kèm mã SKU duy nhất, đơn vị cơ sở và nhiều đơn vị quy đổi.
@@ -56,7 +60,6 @@ public class ProductService {
         Product product = Product.builder()
                 .sku(trimmedSku)
                 .name(request.getName().trim())
-                .category(request.getCategory() != null ? request.getCategory().trim() : null)
                 .baseUnit(baseUnit)
                 .packaging(request.getPackaging() != null ? request.getPackaging().trim() : null)
                 .costPrice(request.getCostPrice() != null ? request.getCostPrice() : BigDecimal.ZERO)
@@ -65,6 +68,7 @@ public class ProductService {
                 .description(request.getDescription() != null ? request.getDescription().trim() : null)
                 .status(StringUtils.hasText(request.getStatus()) ? request.getStatus().trim().toUpperCase() : "ACTIVE")
                 .build();
+        applyCategory(product, request.getCategory(), request.getCategoryId());
 
         // Kiểm tra tính hợp lệ của danh sách đơn vị quy đổi ban đầu (nếu có)
         if (request.getUnitConversions() != null && !request.getUnitConversions().isEmpty()) {
@@ -149,7 +153,7 @@ public class ProductService {
         }
 
         product.setName(request.getName().trim());
-        product.setCategory(request.getCategory() != null ? request.getCategory().trim() : null);
+        applyCategory(product, request.getCategory(), request.getCategoryId());
         product.setBaseUnit(newBaseUnit);
         product.setPackaging(request.getPackaging() != null ? request.getPackaging().trim() : null);
         // Chỉ Quản lý kinh doanh (hoặc Admin) mới được xem và sửa giá vốn (S2-05)
@@ -274,6 +278,7 @@ public class ProductService {
                 .sku(p.getSku())
                 .name(p.getName())
                 .category(p.getCategory())
+                .categoryId(p.getProductCategory() != null ? p.getProductCategory().getId() : null)
                 .baseUnit(p.getBaseUnit())
                 .packaging(p.getPackaging())
                 .costPrice(canViewCostPrice ? p.getCostPrice() : null)
@@ -301,6 +306,7 @@ public class ProductService {
                 .sku(p.getSku())
                 .name(p.getName())
                 .category(p.getCategory())
+                .categoryId(p.getProductCategory() != null ? p.getProductCategory().getId() : null)
                 .baseUnit(p.getBaseUnit())
                 .packaging(p.getPackaging())
                 .costPrice(canViewCostPrice ? p.getCostPrice() : null)
@@ -313,6 +319,27 @@ public class ProductService {
                 .unitConversions(conversionsOnly)
                 .allUnits(allUnits)
                 .build();
+    }
+
+    /**
+     * S2-06: Gắn sản phẩm vào cây nhóm hàng.
+     * - Có categoryId: gắn vào nhóm đó, ô category lấy theo tên nhóm.
+     * - Không có categoryId nhưng sản phẩm đã nằm trong cây: giữ nguyên nhóm (đổi nhóm qua categoryId
+     *   hoặc API chuyển nhóm), để tên nhóm không bị lệch với nhóm thật.
+     * - Chưa nằm trong cây: giữ cách cũ, lưu tên nhóm dạng chữ.
+     */
+    private void applyCategory(Product product, String categoryText, Long categoryId) {
+        if (categoryId != null) {
+            ProductCategory category = productCategoryRepository.findById(categoryId)
+                    .orElseThrow(() -> new BusinessException(HttpStatus.BAD_REQUEST,
+                            "CATEGORY_NOT_FOUND", "Không tìm thấy nhóm hàng với ID " + categoryId, "categoryId"));
+            product.setProductCategory(category);
+            product.setCategory(category.getName());
+        } else if (product.getProductCategory() != null) {
+            product.setCategory(product.getProductCategory().getName());
+        } else {
+            product.setCategory(categoryText != null ? categoryText.trim() : null);
+        }
     }
 
     /**
