@@ -70,20 +70,24 @@ public class ProductManagementController {
      * S2-05 & S2-07: Lấy chi tiết sản phẩm theo ID kèm toàn bộ đơn vị quy đổi.
      */
     @GetMapping("/{id}")
-    @Operation(summary = "Lấy chi tiết sản phẩm theo ID", description = "Trả về thông tin chi tiết sản phẩm và danh sách đơn vị quy đổi (Thùng, Lốc...).")
+    @Operation(summary = "Lấy chi tiết sản phẩm theo ID", description = "Trả về thông tin chi tiết sản phẩm và danh sách đơn vị quy đổi (Thùng, Lốc...). Giá vốn chỉ trả về cho Quản lý kinh doanh.")
     @PreAuthorize("hasAnyRole('ADMIN', 'SALES_MANAGER', 'WH_MANAGER', 'WAREHOUSE', 'SALES_REP', 'ACCOUNTANT')")
-    public ResponseEntity<ProductDetailResponse> getProductById(@PathVariable Long id) {
-        return ResponseEntity.ok(productService.getProductById(id));
+    public ResponseEntity<ProductDetailResponse> getProductById(
+            @PathVariable Long id,
+            @AuthenticationPrincipal UserDetailsImpl actor) {
+        return ResponseEntity.ok(productService.getProductById(id, actor));
     }
 
     /**
      * S2-05 & S2-07: Tra cứu sản phẩm theo mã SKU (nhân viên kho quét barcode hoặc tìm nhanh).
      */
     @GetMapping("/sku/{sku}")
-    @Operation(summary = "Tra cứu sản phẩm theo mã SKU", description = "Tìm kiếm nhanh sản phẩm theo mã SKU duy nhất kèm danh sách đơn vị quy đổi.")
+    @Operation(summary = "Tra cứu sản phẩm theo mã SKU", description = "Tìm kiếm nhanh sản phẩm theo mã SKU duy nhất kèm danh sách đơn vị quy đổi. Giá vốn chỉ trả về cho Quản lý kinh doanh.")
     @PreAuthorize("hasAnyRole('ADMIN', 'SALES_MANAGER', 'WH_MANAGER', 'WAREHOUSE', 'SALES_REP', 'ACCOUNTANT')")
-    public ResponseEntity<ProductDetailResponse> getProductBySku(@PathVariable String sku) {
-        return ResponseEntity.ok(productService.getProductBySku(sku));
+    public ResponseEntity<ProductDetailResponse> getProductBySku(
+            @PathVariable String sku,
+            @AuthenticationPrincipal UserDetailsImpl actor) {
+        return ResponseEntity.ok(productService.getProductBySku(sku, actor));
     }
 
     /**
@@ -91,7 +95,7 @@ public class ProductManagementController {
      */
     @GetMapping
     @Operation(summary = "Danh sách sản phẩm (có tìm kiếm & phân trang)",
-            description = "Tìm kiếm theo từ khóa (tên, mã SKU), lọc theo nhóm hàng hoặc trạng thái kinh doanh.")
+            description = "Tìm kiếm theo từ khóa (tên, mã SKU), lọc theo nhóm hàng hoặc trạng thái kinh doanh. Giá vốn chỉ trả về cho Quản lý kinh doanh.")
     @PreAuthorize("hasAnyRole('ADMIN', 'SALES_MANAGER', 'WH_MANAGER', 'WAREHOUSE', 'SALES_REP', 'ACCOUNTANT')")
     public ResponseEntity<PageResponse<ProductResponse>> searchProducts(
             @RequestParam(required = false) String keyword,
@@ -99,7 +103,8 @@ public class ProductManagementController {
             @RequestParam(required = false) String status,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size,
-            @RequestParam(defaultValue = "id,desc") String sort) {
+            @RequestParam(defaultValue = "id,desc") String sort,
+            @AuthenticationPrincipal UserDetailsImpl actor) {
 
         int safePage = Math.max(page, 0);
         int safeSize = size <= 0 ? 20 : Math.min(size, 100);
@@ -112,7 +117,7 @@ public class ProductManagementController {
         }
 
         PageResponse<ProductResponse> result = productService.searchProducts(
-                keyword, category, status, PageRequest.of(safePage, safeSize, sortOrder));
+                keyword, category, status, PageRequest.of(safePage, safeSize, sortOrder), actor);
         return ResponseEntity.ok(result);
     }
 

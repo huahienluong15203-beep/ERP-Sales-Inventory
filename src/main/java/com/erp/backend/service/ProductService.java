@@ -17,6 +17,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
+
 import java.math.BigDecimal;
 import java.util.HashSet;
 import java.util.List;
@@ -149,8 +152,15 @@ public class ProductService {
         product.setCategory(request.getCategory() != null ? request.getCategory().trim() : null);
         product.setBaseUnit(newBaseUnit);
         product.setPackaging(request.getPackaging() != null ? request.getPackaging().trim() : null);
+        // Chỉ Quản lý kinh doanh (hoặc Admin) mới được xem và sửa giá vốn (S2-05)
+        boolean canManageCost = canViewCostPrice(actor);
         if (request.getCostPrice() != null) {
-            product.setCostPrice(request.getCostPrice());
+            if (canManageCost) {
+                product.setCostPrice(request.getCostPrice());
+            } else {
+                log.warn("S2-05 Người dùng {} không có quyền sửa giá vốn, giữ nguyên giá cũ",
+                        actor != null ? actor.getUsername() : "unknown");
+            }
         }
         product.setBarcode(request.getBarcode() != null ? request.getBarcode().trim() : null);
         product.setImageUrl(request.getImageUrl() != null ? request.getImageUrl().trim() : null);
@@ -173,34 +183,44 @@ public class ProductService {
                 actor
         );
 
-        return mapToDetailResponse(updated);
+        return mapToDetailResponse(updated, canManageCost);
     }
 
     /**
-     * Lấy chi tiết sản phẩm kèm danh sách đơn vị quy đổi theo ID.
+     * Lấy chi tiết sản phẩm kèm danh sách đơn vị quy đổi theo ID (có bảo mật giá vốn S2-05).
      */
     @Transactional(readOnly = true)
-    public ProductDetailResponse getProductById(Long id) {
+    public ProductDetailResponse getProductById(Long id, UserDetailsImpl actor) {
         Product product = productRepository.findByIdWithConversions(id)
                 .orElseThrow(() -> BusinessException.notFound("Không tìm thấy sản phẩm với ID " + id));
-        return mapToDetailResponse(product);
+        return mapToDetailResponse(product, canViewCostPrice(actor));
+    }
+
+    @Transactional(readOnly = true)
+    public ProductDetailResponse getProductById(Long id) {
+        return getProductById(id, null);
     }
 
     /**
-     * Lấy chi tiết sản phẩm kèm danh sách đơn vị quy đổi theo SKU (nhân viên kho tìm nhanh).
+     * Lấy chi tiết sản phẩm kèm danh sách đơn vị quy đổi theo SKU (có bảo mật giá vốn S2-05).
      */
     @Transactional(readOnly = true)
-    public ProductDetailResponse getProductBySku(String sku) {
+    public ProductDetailResponse getProductBySku(String sku, UserDetailsImpl actor) {
         Product product = productRepository.findBySkuWithConversions(sku.trim())
                 .orElseThrow(() -> BusinessException.notFound("Không tìm thấy sản phẩm với SKU '" + sku + "'"));
-        return mapToDetailResponse(product);
+        return mapToDetailResponse(product, canViewCostPrice(actor));
+    }
+
+    @Transactional(readOnly = true)
+    public ProductDetailResponse getProductBySku(String sku) {
+        return getProductBySku(sku, null);
     }
 
     /**
-     * Tìm kiếm và phân trang danh mục sản phẩm.
+     * Tìm kiếm và phân trang danh mục sản phẩm (có bảo mật giá vốn S2-05).
      */
     @Transactional(readOnly = true)
-    public PageResponse<ProductResponse> searchProducts(String keyword, String category, String status, Pageable pageable) {
+    public PageResponse<ProductResponse> searchProducts(String keyword, String category, String status, Pageable pageable, UserDetailsImpl actor) {
         Page<Product> page = productRepository.searchProducts(
                 StringUtils.hasText(keyword) ? keyword.trim() : null,
                 StringUtils.hasText(category) ? category.trim() : null,
@@ -208,7 +228,13 @@ public class ProductService {
                 pageable
         );
 
-        return PageResponse.of(page.map(this::mapToResponse));
+        boolean canViewCost = canViewCostPrice(actor);
+        return PageResponse.of(page.map(p -> mapToResponse(p, canViewCost)));
+    }
+
+    @Transactional(readOnly = true)
+    public PageResponse<ProductResponse> searchProducts(String keyword, String category, String status, Pageable pageable) {
+        return searchProducts(keyword, category, status, pageable, null);
     }
 
     /**
@@ -239,6 +265,10 @@ public class ProductService {
     }
 
     public ProductResponse mapToResponse(Product p) {
+        return mapToResponse(p, canViewCostPrice(null));
+    }
+
+    public ProductResponse mapToResponse(Product p, boolean canViewCostPrice) {
         return ProductResponse.builder()
                 .id(p.getId())
                 .sku(p.getSku())
@@ -246,7 +276,7 @@ public class ProductService {
                 .category(p.getCategory())
                 .baseUnit(p.getBaseUnit())
                 .packaging(p.getPackaging())
-                .costPrice(p.getCostPrice())
+                .costPrice(canViewCostPrice ? p.getCostPrice() : null)
                 .status(p.getStatus())
                 .barcode(p.getBarcode())
                 .imageUrl(p.getImageUrl())
@@ -257,6 +287,10 @@ public class ProductService {
     }
 
     public ProductDetailResponse mapToDetailResponse(Product p) {
+        return mapToDetailResponse(p, canViewCostPrice(null));
+    }
+
+    public ProductDetailResponse mapToDetailResponse(Product p, boolean canViewCostPrice) {
         List<ProductUnitConversionResponse> allUnits = unitConversionService.buildAllUnitsList(p);
         List<ProductUnitConversionResponse> conversionsOnly = allUnits.stream()
                 .filter(u -> !u.isBaseUnit())
@@ -269,7 +303,7 @@ public class ProductService {
                 .category(p.getCategory())
                 .baseUnit(p.getBaseUnit())
                 .packaging(p.getPackaging())
-                .costPrice(p.getCostPrice())
+                .costPrice(canViewCostPrice ? p.getCostPrice() : null)
                 .status(p.getStatus())
                 .barcode(p.getBarcode())
                 .imageUrl(p.getImageUrl())
@@ -279,5 +313,25 @@ public class ProductService {
                 .unitConversions(conversionsOnly)
                 .allUnits(allUnits)
                 .build();
+    }
+
+    /**
+     * S2-05: Kiểm tra xem người dùng hiện tại có quyền xem/sửa Giá vốn hay không.
+     * Chỉ có Quản lý kinh doanh (ROLE_SALES_MANAGER) hoặc Quản trị hệ thống (ROLE_ADMIN) mới có quyền.
+     */
+    public boolean canViewCostPrice(UserDetailsImpl actor) {
+        if (actor != null && actor.getAuthorities() != null && !actor.getAuthorities().isEmpty()) {
+            return actor.getAuthorities().stream()
+                    .anyMatch(a -> "ROLE_SALES_MANAGER".equals(a.getAuthority()) || "ROLE_ADMIN".equals(a.getAuthority()));
+        }
+        try {
+            Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+            if (auth != null && auth.isAuthenticated() && auth.getAuthorities() != null) {
+                return auth.getAuthorities().stream()
+                        .anyMatch(a -> "ROLE_SALES_MANAGER".equals(a.getAuthority()) || "ROLE_ADMIN".equals(a.getAuthority()));
+            }
+        } catch (Exception ignored) {
+        }
+        return false;
     }
 }

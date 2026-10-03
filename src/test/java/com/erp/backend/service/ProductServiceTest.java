@@ -16,6 +16,8 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.HttpStatus;
 
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.Optional;
@@ -49,7 +51,8 @@ class ProductServiceTest {
 
     @BeforeEach
     void setUp() {
-        actor = new UserDetailsImpl(1L, "admin", "Quản trị viên", "admin@erp.com", "password", true, List.of());
+        actor = new UserDetailsImpl(1L, "admin", "Quản trị viên", "admin@erp.com", "password", true,
+                List.of(new SimpleGrantedAuthority("ROLE_ADMIN")));
     }
 
     @Test
@@ -272,5 +275,51 @@ class ProductServiceTest {
                 anyString(),
                 eq(actor)
         );
+    }
+
+    @Test
+    @DisplayName("S2-05: Quản lý kinh doanh xem chi tiết sản phẩm -> Thấy giá vốn (costPrice)")
+    void getProductById_AsSalesManager_ShowsCostPrice() {
+        Product existing = Product.builder()
+                .id(1L)
+                .sku("SP-COCA-330")
+                .name("Coca-Cola")
+                .baseUnit("Lon")
+                .costPrice(BigDecimal.valueOf(210000))
+                .build();
+
+        UserDetailsImpl salesManager = new UserDetailsImpl(2L, "manager", "Quản lý KD", "mgr@erp.com", "x", true,
+                List.of(new SimpleGrantedAuthority("ROLE_SALES_MANAGER")));
+
+        when(productRepository.findByIdWithConversions(1L)).thenReturn(Optional.of(existing));
+        when(unitConversionService.buildAllUnitsList(existing)).thenReturn(List.of());
+
+        ProductDetailResponse response = productService.getProductById(1L, salesManager);
+
+        assertThat(response.getCostPrice()).isNotNull();
+        assertThat(response.getCostPrice()).isEqualByComparingTo(BigDecimal.valueOf(210000));
+    }
+
+    @Test
+    @DisplayName("S2-05: Nhân viên kho xem chi tiết sản phẩm -> Giá vốn (costPrice) bị ẩn (null)")
+    void getProductById_AsWarehouseStaff_MasksCostPrice() {
+        Product existing = Product.builder()
+                .id(1L)
+                .sku("SP-COCA-330")
+                .name("Coca-Cola")
+                .baseUnit("Lon")
+                .costPrice(BigDecimal.valueOf(210000))
+                .build();
+
+        UserDetailsImpl warehouseStaff = new UserDetailsImpl(3L, "warehouse", "Thủ kho", "wh@erp.com", "x", true,
+                List.of(new SimpleGrantedAuthority("ROLE_WAREHOUSE")));
+
+        when(productRepository.findByIdWithConversions(1L)).thenReturn(Optional.of(existing));
+        when(unitConversionService.buildAllUnitsList(existing)).thenReturn(List.of());
+
+        ProductDetailResponse response = productService.getProductById(1L, warehouseStaff);
+
+        // Bảo mật: Nhân viên kho không thấy được giá vốn
+        assertThat(response.getCostPrice()).isNull();
     }
 }

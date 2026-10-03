@@ -29,6 +29,7 @@ import java.time.LocalDateTime;
 import java.util.List;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
@@ -129,7 +130,7 @@ class ProductManagementControllerTest {
                 .baseUnit("Lon")
                 .build();
 
-        when(productService.getProductById(1L)).thenReturn(response);
+        when(productService.getProductById(eq(1L), any())).thenReturn(response);
 
         mockMvc.perform(get("/api/products/1"))
                 .andExpect(status().isOk())
@@ -147,7 +148,7 @@ class ProductManagementControllerTest {
                 .baseUnit("Lon")
                 .build();
 
-        when(productService.getProductBySku("SP-COCA-330")).thenReturn(response);
+        when(productService.getProductBySku(eq("SP-COCA-330"), any())).thenReturn(response);
 
         mockMvc.perform(get("/api/products/sku/SP-COCA-330"))
                 .andExpect(status().isOk())
@@ -165,7 +166,7 @@ class ProductManagementControllerTest {
                 .build();
 
         PageResponse<ProductResponse> pageResponse = new PageResponse<>(List.of(pr), 0, 20, 1, 1);
-        when(productService.searchProducts(any(), any(), any(), any())).thenReturn(pageResponse);
+        when(productService.searchProducts(any(), any(), any(), any(), any())).thenReturn(pageResponse);
 
         mockMvc.perform(get("/api/products?keyword=coca&page=0&size=20"))
                 .andExpect(status().isOk())
