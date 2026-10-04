@@ -18,6 +18,9 @@ public interface ProductRepository extends JpaRepository<Product, Long> {
 
     Optional<Product> findBySku(String sku);
 
+    // S2-10: tìm SKU không phân biệt hoa thường (sản phẩm nhập Excel có thể lưu chữ thường)
+    Optional<Product> findFirstBySkuIgnoreCaseOrderByIdAsc(String sku);
+
     boolean existsBySku(String sku);
 
     List<Product> findBySkuIn(Collection<String> skus);
