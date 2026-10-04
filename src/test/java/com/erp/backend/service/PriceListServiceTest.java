@@ -11,6 +11,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -37,6 +38,7 @@ class PriceListServiceTest {
     @Mock private PriceListItemRepository itemRepository;
     @Mock private ProductRepository productRepository;
     @Mock private AuditLogService auditLogService;
+    @Mock private PriceHistoryService priceHistoryService;
 
     @InjectMocks private PriceListService service;
 
@@ -265,6 +267,53 @@ class PriceListServiceTest {
         when(itemRepository.findEffective(eq(CustomerGroup.RETAIL), any(), any(), any(Pageable.class))).thenReturn(List.of());
         assertThatThrownBy(() -> service.lookup("RETAIL", "SP-COCA", day))
                 .hasMessageContaining("Không tìm thấy").hasMessageContaining("hiệu lực");
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<PriceChange> capturedChanges() {
+        ArgumentCaptor<List<PriceChange>> captor = ArgumentCaptor.forClass(List.class);
+        verify(priceHistoryService).record(any(PriceList.class), captor.capture(), eq(manager));
+        return captor.getValue();
+    }
+
+    @Test
+    @DisplayName("S3-02: Tạo bảng giá -> mỗi dòng giá ghi 1 lịch sử 'Thêm giá'")
+    void history_onCreate() {
+        service.create(request(item("SP-COCA", "10000", "9000"), item("SP-PEPSI", "9500", "9000")), manager);
+
+        List<PriceChange> changes = capturedChanges();
+        assertThat(changes).hasSize(2).allMatch(c -> c.changeType().equals(PriceHistory.CREATE) && c.oldPrice() == null);
+    }
+
+    @Test
+    @DisplayName("S3-02: Sửa bảng giá -> ghi giá cũ/giá mới cho dòng đổi giá, 'Bỏ giá' cho dòng bị xoá, bỏ qua dòng không đổi")
+    void history_onUpdate() {
+        PriceList p = existing(false);
+        p.addItem(PriceListItem.builder().id(51L).product(pepsi).productSku("SP-PEPSI").productName("Pepsi lon")
+                .price(new BigDecimal("8000")).floorPrice(new BigDecimal("7000")).build());
+        PriceListRequest r = request(item("SP-COCA", "9500", "8000"));
+        r.setCode("BG-OLD");
+
+        service.update(5L, r, manager);
+
+        List<PriceChange> changes = capturedChanges();
+        assertThat(changes).hasSize(2);
+        PriceChange update = changes.stream().filter(c -> c.changeType().equals(PriceHistory.UPDATE)).findFirst().orElseThrow();
+        assertThat(update.oldPrice()).isEqualByComparingTo("9000");
+        assertThat(update.newPrice()).isEqualByComparingTo("9500");
+        PriceChange delete = changes.stream().filter(c -> c.changeType().equals(PriceHistory.DELETE)).findFirst().orElseThrow();
+        assertThat(delete.product()).isSameAs(pepsi);
+        assertThat(delete.newPrice()).isNull();
+    }
+
+    @Test
+    @DisplayName("S3-02: Sửa dòng giá nhưng giữ nguyên giá -> không ghi lịch sử")
+    void history_unchangedPriceNotRecorded() {
+        existing(false);
+
+        service.upsertItem(5L, item("SP-COCA", "9000", "8000"), manager);
+
+        assertThat(capturedChanges()).isEmpty();
     }
 
     @Test

@@ -27,7 +27,7 @@ import java.util.regex.Pattern;
  * - Mỗi dòng giá có giá bán và giá sàn (giá sàn không lớn hơn giá bán).
  * - Bảng giá đã phát sinh đơn thì không sửa, chỉ tạo phiên bản mới.
  * - Tra giá: nhiều bảng cùng hiệu lực thì lấy bảng có ngày bắt đầu mới nhất, rồi phiên bản cao nhất.
- * Mọi thay đổi giá đều ghi nhật ký hệ thống (phân hệ PRICING).
+ * Mọi thay đổi giá đều ghi nhật ký hệ thống (phân hệ PRICING) và lịch sử giá (S3-02).
  */
 @Service
 @RequiredArgsConstructor
@@ -43,6 +43,7 @@ public class PriceListService {
     private final PriceListItemRepository itemRepository;
     private final ProductRepository productRepository;
     private final AuditLogService auditLogService;
+    private final PriceHistoryService priceHistoryService;
 
     // ======================= XEM / TRA CỨU =======================
 
@@ -109,9 +110,10 @@ public class PriceListService {
                 .status(ACTIVE)
                 .version(1)
                 .build();
-        replaceItems(priceList, req.getItems() != null ? req.getItems() : List.of());
+        List<PriceChange> changes = replaceItems(priceList, req.getItems() != null ? req.getItems() : List.of());
 
         PriceList saved = priceListRepository.save(priceList);
+        priceHistoryService.record(saved, changes, actor);
         audit("CREATE_PRICE_LIST", saved, null, summary(saved), "Tạo bảng giá " + saved.getCode(), actor);
         return toResponse(saved, true);
     }
@@ -136,11 +138,10 @@ public class PriceListService {
         priceList.setStartDate(req.getStartDate());
         priceList.setEndDate(req.getEndDate());
         priceList.setNote(blankToNull(req.getNote()));
-        if (req.getItems() != null) {
-            replaceItems(priceList, req.getItems());
-        }
+        List<PriceChange> changes = req.getItems() != null ? replaceItems(priceList, req.getItems()) : List.of();
 
         PriceList saved = priceListRepository.save(priceList);
+        priceHistoryService.record(saved, changes, actor);
         audit("UPDATE_PRICE_LIST", saved, before, summary(saved), "Sửa bảng giá " + saved.getCode(), actor);
         return toResponse(saved, true);
     }
@@ -178,8 +179,9 @@ public class PriceListService {
                 .build();
         validateName(copy.getName());
 
+        List<PriceChange> changes = new ArrayList<>();
         if (r.getItems() != null && !r.getItems().isEmpty()) {
-            replaceItems(copy, r.getItems());
+            changes.addAll(replaceItems(copy, r.getItems()));
         } else {
             for (PriceListItem it : source.getItems()) {
                 copy.addItem(PriceListItem.builder()
@@ -189,10 +191,12 @@ public class PriceListService {
                         .price(it.getPrice())
                         .floorPrice(it.getFloorPrice())
                         .build());
+                changes.add(new PriceChange(it.getProduct(), PriceHistory.CREATE, null, it.getPrice(), null, it.getFloorPrice()));
             }
         }
 
         PriceList saved = priceListRepository.save(copy);
+        priceHistoryService.record(saved, changes, actor);
         audit("CLONE_PRICE_LIST", saved, source.getCode() + " (v" + source.getVersion() + ")", summary(saved),
                 "Tạo phiên bản " + saved.getVersion() + " từ " + source.getCode(), actor);
         return toResponse(saved, true);
@@ -229,15 +233,20 @@ public class PriceListService {
                 .findFirst()
                 .orElse(null);
         String before = item == null ? null : priceText(item.getPrice(), item.getFloorPrice());
+        PriceChange change;
         if (item == null) {
             item = newItem(product, req);
             priceList.addItem(item);
+            change = new PriceChange(product, PriceHistory.CREATE, null, req.getPrice(), null, req.getFloorPrice());
         } else {
+            change = samePrices(item, req) ? null : new PriceChange(product, PriceHistory.UPDATE,
+                    item.getPrice(), req.getPrice(), item.getFloorPrice(), req.getFloorPrice());
             item.setPrice(req.getPrice());
             item.setFloorPrice(req.getFloorPrice());
         }
 
         PriceList saved = priceListRepository.save(priceList);
+        priceHistoryService.record(saved, change == null ? List.of() : List.of(change), actor);
         audit(before == null ? "ADD_PRICE_ITEM" : "UPDATE_PRICE_ITEM", saved, before,
                 priceText(req.getPrice(), req.getFloorPrice()),
                 "SKU " + product.getSku() + " trong bảng giá " + saved.getCode(), actor);
@@ -255,6 +264,8 @@ public class PriceListService {
         priceList.getItems().remove(item);
 
         PriceList saved = priceListRepository.save(priceList);
+        priceHistoryService.record(saved, List.of(new PriceChange(item.getProduct(), PriceHistory.DELETE,
+                item.getPrice(), null, item.getFloorPrice(), null)), actor);
         audit("DELETE_PRICE_ITEM", saved, item.getProductSku() + ": " + priceText(item.getPrice(), item.getFloorPrice()),
                 null, "Xoá dòng giá khỏi bảng giá " + saved.getCode(), actor);
         return toResponse(saved, true);
@@ -279,8 +290,11 @@ public class PriceListService {
         }
     }
 
-    /** Thay toàn bộ dòng giá: sản phẩm đã có thì sửa giá, sản phẩm mới thì thêm, sản phẩm bị bỏ thì xoá. */
-    private void replaceItems(PriceList priceList, List<PriceListItemRequest> requests) {
+    /**
+     * Thay toàn bộ dòng giá: sản phẩm đã có thì sửa giá, sản phẩm mới thì thêm, sản phẩm bị bỏ thì xoá.
+     * Trả về các thay đổi giá để ghi lịch sử (dòng không đổi giá thì không ghi).
+     */
+    private List<PriceChange> replaceItems(PriceList priceList, List<PriceListItemRequest> requests) {
         Map<Long, PriceListItemRequest> wanted = new LinkedHashMap<>();
         Map<Long, Product> products = new HashMap<>();
         for (PriceListItemRequest r : requests) {
@@ -294,19 +308,38 @@ public class PriceListService {
             products.put(product.getId(), product);
         }
 
+        List<PriceChange> changes = new ArrayList<>();
+        for (PriceListItem removed : priceList.getItems().stream()
+                .filter(i -> !wanted.containsKey(i.getProduct().getId())).toList()) {
+            changes.add(new PriceChange(removed.getProduct(), PriceHistory.DELETE,
+                    removed.getPrice(), null, removed.getFloorPrice(), null));
+        }
         priceList.getItems().removeIf(i -> !wanted.containsKey(i.getProduct().getId()));
+
         for (Map.Entry<Long, PriceListItemRequest> e : wanted.entrySet()) {
             PriceListItemRequest r = e.getValue();
             Optional<PriceListItem> existing = priceList.getItems().stream()
                     .filter(i -> i.getProduct().getId().equals(e.getKey()))
                     .findFirst();
             if (existing.isPresent()) {
-                existing.get().setPrice(r.getPrice());
-                existing.get().setFloorPrice(r.getFloorPrice());
+                PriceListItem item = existing.get();
+                if (!samePrices(item, r)) {
+                    changes.add(new PriceChange(item.getProduct(), PriceHistory.UPDATE,
+                            item.getPrice(), r.getPrice(), item.getFloorPrice(), r.getFloorPrice()));
+                }
+                item.setPrice(r.getPrice());
+                item.setFloorPrice(r.getFloorPrice());
             } else {
-                priceList.addItem(newItem(products.get(e.getKey()), r));
+                Product product = products.get(e.getKey());
+                priceList.addItem(newItem(product, r));
+                changes.add(new PriceChange(product, PriceHistory.CREATE, null, r.getPrice(), null, r.getFloorPrice()));
             }
         }
+        return changes;
+    }
+
+    private static boolean samePrices(PriceListItem item, PriceListItemRequest r) {
+        return item.getPrice().compareTo(r.getPrice()) == 0 && item.getFloorPrice().compareTo(r.getFloorPrice()) == 0;
     }
 
     private PriceListItem newItem(Product product, PriceListItemRequest r) {
